@@ -1,0 +1,40 @@
+/* Midnight: cool graphite surfaces and accessible blue accents.
+ * Keep the persisted core-night class compatible with existing preferences.
+ * Plugins inherit the public tokens, including portalled controls.
+ */
+:root.core-night {
+  color-scheme: dark;
+  --notible-background: #141b26;
+  --notible-surface: #1a2331;
+  --notible-raised: #222e40;
+  --notible-hover: #28364a;
+  --notible-active: #31445e;
+  --notible-text: #edf2fa;
+  --notible-muted: #b6c3d6;
+  --notible-faint: #93a4bd;
+  --notible-border: rgba(180, 200, 230, .2);
+  --notible-border-subtle: rgba(180, 200, 230, .11);
+  --notible-accent: #80b2ff;
+  --notible-accent-hover: #a6caff;
+  --notible-on-accent: #101c30;
+  --notible-selected: rgba(128, 178, 255, .2);
+  --notible-selected-soft: rgba(128, 178, 255, .1);
+  --notible-danger: #ff9aab;
+  --notible-danger-surface: rgba(255, 116, 142, .19);
+  --notible-success: #8cd9b1;
+  --notible-success-surface: rgba(88, 194, 143, .16);
+  --notible-warning: #edc47e;
+  --notible-highlight-yellow: rgba(214, 184, 92, .28);
+  --notible-highlight-green: rgba(140, 178, 129, .26);
+  --notible-highlight-blue: rgba(122, 163, 196, .28);
+  --notible-highlight-pink: rgba(206, 137, 156, .26);
+  --notible-highlight-purple: rgba(166, 145, 200, .26);
+  --notible-highlight-orange: rgba(210, 150, 92, .26);
+  --notible-scroll-thumb: #4c607c;
+  --notible-scroll-thumb-strong: #8097b6;
+  --notible-color-blue: #80b2ff;
+  --notible-color-green: #8cd9b1;
+  --notible-color-amber: #edc47e;
+  --notible-color-red: #ff9aab;
+  --notible-color-violet: #bca7f5;
+}

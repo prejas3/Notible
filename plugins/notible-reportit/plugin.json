@@ -1,0 +1,19 @@
+{
+  "id": "notible.reportit",
+  "name": "ReportIt",
+  "version": "0.1.17",
+  "apiVersion": "1.14",
+  "minCoreVersion": "0.80.0",
+  "description": "Turn chosen notes, tasks and issues into one tidy PDF report with a cover, contents and page numbers. Your notes stay as they are.",
+  "author": "Notible",
+  "entry": "main.js",
+  "permissions": [
+    "data.read",
+    "media.read",
+    "workspace.ui"
+  ],
+  "guide": "Open **ReportIt** in the sidebar.\n\n1. Pick the items to include on the left; drag them into the order you want.\n2. Give the report a title, and choose which properties to show (status, priority and due are on to start with). Tasks and issues can go into one table instead of a page each.\n3. Click **Generate report**, check the preview, and print it to PDF.\n\nWhiteboards come out as a readable outline of their cards and arrows.",
+  "locales": {
+    "pl": "locales/pl.json"
+  }
+}

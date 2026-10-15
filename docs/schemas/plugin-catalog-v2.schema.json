@@ -1,0 +1,29 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Notible plugin index v2 — generated plugins/index.json (community model)",
+  "description": "Describes the generated plugins/index.json, which buildIndex stamps with generatedAt. The hand-edited release/market/catalog.json omits generatedAt by design and is not directly described by this schema.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "generatedAt", "plugins"],
+  "properties": {
+    "schemaVersion": { "const": 2 },
+    "generatedAt": { "type": "string", "format": "date-time" },
+    "plugins": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "name", "author", "description", "repo", "minCoreVersion", "apiVersion"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^[a-z0-9]+(\\.[a-z0-9-]+)+$" },
+          "name": { "type": "string", "minLength": 1 },
+          "author": { "type": "string", "minLength": 1 },
+          "description": { "type": "string" },
+          "repo": { "type": "string", "pattern": "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$", "$comment": "The runtime validator additionally rejects a '.' or '..' owner or name segment, which this pattern cannot express." },
+          "minCoreVersion": { "type": "string", "pattern": "^\\d+\\.\\d+\\.\\d+$" },
+          "apiVersion": { "type": "string", "pattern": "^\\d+\\.\\d+$" }
+        }
+      }
+    }
+  }
+}

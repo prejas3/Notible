@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">Notible</title>
+  <desc id="desc">The Notible notch and focus point on an ink background.</desc>
+  <rect width="512" height="512" rx="112" fill="#090B0D"/>
+  <path fill="#F3F0E8" d="M112 88c-13.255 0-24 10.745-24 24v176c0 13.255 10.745 24 24 24h56c17.673 0 32 14.327 32 32v56c0 13.255 10.745 24 24 24h176c13.255 0 24-10.745 24-24V224c0-13.255-10.745-24-24-24h-56c-17.673 0-32-14.327-32-32v-56c0-13.255-10.745-24-24-24H112Z"/>
+  <circle cx="256" cy="256" r="34" fill="#7557E8"/>
+</svg>

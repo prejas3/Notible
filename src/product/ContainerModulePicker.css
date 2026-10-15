@@ -1,0 +1,31 @@
+.cmp-backdrop { position: fixed; inset: 0; z-index: 80; display: grid; place-items: center; background: color-mix(in srgb, var(--core-text) 32%, transparent); padding: 24px; }
+.cmp-panel { width: min(520px, 100%); max-height: 80vh; overflow-y: auto; display: grid; gap: 12px; padding: 20px; border: 1px solid var(--core-line); border-radius: 14px; background: var(--core-surface); color: var(--core-text); box-shadow: 0 12px 40px rgba(0, 0, 0, .22); }
+.cmp-title { margin: 0; font-size: 17px; }
+.cmp-intro { margin: 0; color: var(--core-muted); font-size: 13px; }
+.cmp-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.cmp-row { display: grid; grid-template-columns: auto 1fr; gap: 10px; align-items: start; padding: 10px; border: 1px solid var(--core-line); border-radius: 9px; cursor: pointer; }
+.cmp-row:hover { background: var(--core-background); }
+.cmp-row input { margin-top: 2px; accent-color: var(--core-accent); }
+.cmp-row-text { display: grid; gap: 2px; }
+.cmp-row-text small { color: var(--core-muted); font-size: 12px; }
+.cmp-actions { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
+.cmp-spacer { flex: 1; }
+.cmp-skip, .cmp-cancel { border: 1px solid var(--core-line); border-radius: 8px; padding: 7px 12px; background: var(--core-surface); color: var(--core-text); cursor: pointer; font: inherit; font-size: 13px; }
+.cmp-skip:hover, .cmp-cancel:hover { background: var(--core-background); }
+.cmp-confirm { border: 1px solid var(--core-accent); border-radius: 8px; padding: 7px 14px; background: var(--core-accent); color: var(--core-on-accent); cursor: pointer; font: inherit; font-size: 13px; }
+.cmp-name { display: grid; gap: 4px; font-size: 12px; color: var(--core-muted); }
+.cmp-name input { border: 1px solid var(--core-line); border-radius: 8px; padding: 8px 10px; background: var(--core-surface); color: var(--core-text); font: inherit; font-size: 14px; }
+.cmp-name input:focus { border-color: var(--core-accent); outline: none; }
+/* Fits a 700 px window (V-SURFACES-03): title, name and buttons stay put, only the list scrolls. */
+.cmp-panel { max-height: min(640px, calc(100vh - 48px)); overflow: hidden; display: flex; flex-direction: column; }
+.cmp-list { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
+.cmp-row { padding: 7px 10px; }
+.cmp-row-text small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* D3: what plugins that are off would add, each with Turn on. */
+.cmp-more-title { margin: 14px 0 4px; color: var(--core-muted); font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
+.cmp-offer { display: flex; align-items: center; gap: 12px; }
+.cmp-offer .cmp-row-text { flex: 1 1 auto; min-width: 0; }
+.cmp-turn-on { flex: none; border: 1px solid var(--core-accent); border-radius: 8px; padding: 5px 12px; background: transparent; color: var(--core-accent); font: inherit; font-size: 13px; cursor: pointer; }
+.cmp-turn-on:hover:not(:disabled) { background: var(--core-selected-soft); }
+.cmp-turn-on:disabled { opacity: .6; cursor: default; }

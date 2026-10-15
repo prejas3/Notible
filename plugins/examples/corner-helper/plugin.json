@@ -1,0 +1,10 @@
+{
+  "id": "example.corner-helper",
+  "name": "Corner helper example",
+  "version": "0.1.0",
+  "apiVersion": "1.22",
+  "description": "A minimal helper in the workspace corner: it lists what this build knows and opens Help or a plugin's settings.",
+  "author": "Notible example",
+  "entry": "main.js",
+  "permissions": ["workspace.ui"]
+}

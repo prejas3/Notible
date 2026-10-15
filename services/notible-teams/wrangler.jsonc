@@ -1,0 +1,24 @@
+{
+  "$schema": "https://unpkg.com/wrangler/config-schema.json",
+  "name": "notible-teams",
+  "main": "src/index.js",
+  "compatibility_date": "2026-09-01",
+  "observability": { "enabled": true },
+  "routes": [{ "pattern": "notible.szymonjankiewicz.com", "custom_domain": true }],
+  "workers_dev": false,
+  "vars": {
+    // The "Notible Sync" desktop OAuth client (src-tauri/src/plugin_oauth.rs).
+    "GOOGLE_CLIENT_ID": "73659392730-coll1lrb1f8av6rhg65u24innjn3plnk.apps.googleusercontent.com"
+    // ALLOWED_EMAILS is a secret: `npx wrangler secret put ALLOWED_EMAILS`
+    // (comma-separated), so adding a tester needs no deploy.
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "notible-teams",
+      "database_id": "126536fd-35f2-426b-9890-2f6f8e305076",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "r2_buckets": [{ "binding": "MEDIA", "bucket_name": "notible-teams-media" }]
+}

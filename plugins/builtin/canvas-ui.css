@@ -1,0 +1,136 @@
+.canvas-shell { display: flex; flex-direction: column; gap: 8px; height: 100%; min-height: min(78dvh, 720px); }
+.canvas-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 4px; border: 1px solid var(--notible-border); border-radius: 12px; background: var(--notible-surface); }
+.canvas-toolbar button { display: inline-flex; align-items: center; gap: 6px; border: 1px solid transparent; border-radius: 999px; padding: 7px 13px; background: transparent; color: var(--notible-text); cursor: pointer; font: inherit; font-size: 13px; transition: background-color 120ms ease, border-color 120ms ease, transform 100ms ease; }
+.canvas-toolbar button:hover { background: var(--notible-hover); }
+.canvas-toolbar button:active { transform: translateY(1px); }
+.canvas-toolbar button.active { border-color: var(--notible-accent); background: var(--notible-selected); color: var(--notible-accent); }
+.canvas-toolbar-hint { color: var(--notible-muted); font-size: 12px; }
+.canvas-spacer { flex: 1; }
+.canvas-zoom-group { display: flex; align-items: center; gap: 2px; border-radius: 999px; padding: 2px; background: var(--notible-hover); }
+.canvas-icon-button { border: 0 !important; border-radius: 50% !important; padding: 6px !important; }
+.canvas-zoom { min-width: 40px; color: var(--notible-muted); font-size: 12px; text-align: center; }
+.canvas-link-picker { position: relative; z-index: 5; display: grid; gap: 6px; border: 1px solid var(--notible-border); border-radius: 10px; padding: 10px; background: var(--notible-surface); box-shadow: 0 10px 30px rgba(0, 0, 0, 0.12); }
+.canvas-link-results { display: grid; gap: 4px; max-height: 220px; overflow: auto; }
+.canvas-link-results button { display: flex; align-items: center; gap: 8px; border: 0; border-radius: 7px; padding: 7px 9px; background: transparent; color: var(--notible-text); text-align: left; cursor: pointer; font: inherit; }
+.canvas-link-results button:hover { background: var(--notible-hover); }
+.canvas-link-results small { margin-left: auto; color: var(--notible-muted); font-size: 11px; }
+.canvas-hint { margin: 0; padding: 6px 10px; border-radius: 7px; background: var(--notible-selected); color: var(--notible-text); font-size: 12px; }
+.canvas-error, .canvas-loading { padding: 20px; color: var(--notible-muted); }
+.canvas-surface { position: relative; flex: 1; min-height: min(70dvh, 640px); overflow: hidden; border: 1px solid var(--notible-border); border-radius: 12px; background-color: var(--notible-hover); background-image: radial-gradient(circle, var(--notible-border) 1.2px, transparent 1.2px); cursor: grab; touch-action: none; }
+.canvas-surface:active { cursor: grabbing; }
+.canvas-world { position: absolute; inset: 0; transform-origin: 0 0; }
+.canvas-edges { position: absolute; inset: 0; overflow: visible; pointer-events: none; }
+/* The arrowhead <marker> path has no class of its own (SVG markers can't be
+   targeted by the line's class), so it needs an explicit rule or it renders
+   at the SVG default fill (black) in both themes. */
+#canvas-arrow path { fill: context-stroke; }
+.canvas-edge-line { fill: none; stroke: var(--notible-muted); stroke-width: 2; stroke-linejoin: round; pointer-events: none; transition: stroke 140ms ease, stroke-width 140ms ease; }
+/* Wide invisible hover target; the line itself is not clickable. Removing a
+   connection is the round "×" that appears on hover, as on the Typewriter board. */
+.canvas-edge-hit { fill: none; stroke: transparent; stroke-width: 16; pointer-events: stroke; }
+.canvas-edge-group.is-hover .canvas-edge-line { stroke: var(--notible-danger); stroke-width: 3; }
+.canvas-edge-del { pointer-events: all; cursor: pointer; }
+.canvas-edge-del circle { fill: var(--notible-surface); stroke: var(--notible-danger); stroke-width: 1.5; transition: fill 140ms ease; }
+.canvas-edge-del path { fill: none; stroke: var(--notible-danger); stroke-width: 1.6; stroke-linecap: round; transition: stroke 140ms ease; }
+.canvas-edge-del:hover circle { fill: var(--notible-danger); }
+.canvas-edge-del:hover path { stroke: var(--notible-surface); }
+.canvas-edge-preview, .canvas-edge-preview:hover { stroke: var(--notible-accent); stroke-dasharray: 5 4; pointer-events: none; opacity: .7; }
+.canvas-empty { position: absolute; top: 40px; left: 40px; max-width: 240px; color: var(--notible-muted); font-size: 13px; }
+
+/* Nodes. Colour is a ribbon on the left edge (a fill on a shape), driven by
+   data-colour, using the same theme tokens as the Typewriter board. */
+.canvas-node { --ribbon: transparent; z-index: 1; position: absolute; display: flex; flex-direction: column; border: 1px solid var(--notible-border); border-radius: 10px; background: var(--notible-surface); box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06); cursor: grab; touch-action: none; transition: box-shadow 120ms ease, border-color 140ms ease, background-color 140ms ease; }
+.canvas-node[data-colour="red"] { --ribbon: var(--notible-danger); }
+.canvas-node[data-colour="amber"] { --ribbon: var(--notible-warning); }
+.canvas-node[data-colour="green"] { --ribbon: var(--notible-success); }
+.canvas-node[data-colour="blue"] { --ribbon: var(--notible-highlight-blue); }
+.canvas-node[data-colour="violet"] { --ribbon: var(--notible-highlight-purple); }
+.canvas-node-card[data-colour], .canvas-node-table[data-colour], .canvas-node-note[data-colour], .canvas-node-image[data-colour] { border-left: 7px solid var(--ribbon); }
+.canvas-node:hover { box-shadow: 0 4px 14px rgba(0, 0, 0, 0.1); }
+.canvas-node:active { cursor: grabbing; }
+.canvas-node.selected { outline: 2px solid var(--notible-accent); outline-offset: 1px; }
+.canvas-node.connecting { outline: 2px dashed var(--notible-accent); outline-offset: 1px; }
+.canvas-node-handle { flex: 0 0 10px; border-radius: 10px 10px 0 0; background: color-mix(in srgb, var(--notible-text) 5%, transparent); touch-action: none; }
+.canvas-node-card textarea { flex: 1; resize: none; border: 0; background: transparent; padding: 0 10px 10px; color: var(--notible-text); font: inherit; cursor: text; }
+.canvas-guide { position: absolute; background: var(--notible-accent); z-index: 5; pointer-events: none; }
+.canvas-guide-v { width: 1px; top: -4000px; bottom: -4000px; }
+.canvas-guide-h { height: 1px; left: -4000px; right: -4000px; }
+.canvas-node-card textarea:focus { outline: none; }
+.canvas-node-link { display: flex; flex: 1; flex-direction: column; gap: 3px; border: 0; background: transparent; padding: 10px; color: var(--notible-text); text-align: left; cursor: grab; font: inherit; }
+.canvas-node-link small { color: var(--notible-muted); font-size: 11px; }
+.canvas-node-icon { font-size: 14px; }
+.canvas-resize-handle { position: absolute; right: 2px; bottom: 2px; width: 12px; height: 12px; border-radius: 3px; background: var(--notible-border); cursor: nwse-resize; }
+.canvas-connect-handle { position: absolute; z-index: 2; width: 11px; height: 11px; border: 2px solid var(--notible-accent); border-radius: 50%; background: var(--notible-surface); opacity: 0; transition: opacity 120ms ease, transform 120ms ease; cursor: crosshair; touch-action: none; }
+.canvas-node:hover .canvas-connect-handle, .canvas-node.selected .canvas-connect-handle, .canvas-node.connecting .canvas-connect-handle { opacity: 1; }
+.canvas-connect-handle:hover { transform: scale(1.25); }
+.canvas-connect-handle-n { top: -5px; left: 50%; margin-left: -5.5px; }
+.canvas-connect-handle-s { bottom: -5px; left: 50%; margin-left: -5.5px; }
+.canvas-connect-handle-e { right: -5px; top: 50%; margin-top: -5.5px; }
+.canvas-connect-handle-w { left: -5px; top: 50%; margin-top: -5.5px; }
+
+.canvas-file-input { display: none; }
+
+/* Shape: a labelled diagram form. Unlike a card it has no header strip, its text
+   is centred, and colour outlines and tints it instead of adding a ribbon. */
+.canvas-node-shape { align-items: center; justify-content: center; border: 2px solid var(--ribbon, var(--notible-border)); border-color: color-mix(in srgb, var(--ribbon) 100%, var(--notible-border)); background: color-mix(in srgb, var(--ribbon) 12%, var(--notible-surface)); border-radius: 4px; }
+.canvas-node-shape:not([data-colour]) { border-color: var(--notible-border); background: var(--notible-surface); }
+.canvas-node-shape[data-shape="rounded"] { border-radius: 24px; }
+.canvas-node-shape[data-shape="ellipse"] { border-radius: 50%; }
+.canvas-node-shape[data-shape="diamond"] { border-color: transparent; background: transparent; box-shadow: none; }
+.canvas-shape-bg { position: absolute; inset: 0; inline-size: 100%; block-size: 100%; overflow: visible; pointer-events: none; }
+.canvas-shape-bg polygon { fill: color-mix(in srgb, var(--ribbon) 12%, var(--notible-surface)); stroke: var(--ribbon, var(--notible-border)); stroke-width: 2; stroke-linejoin: round; }
+.canvas-node-shape:not([data-colour]) .canvas-shape-bg polygon { fill: var(--notible-surface); stroke: var(--notible-border); }
+/* Auto-growing, vertically centred label: a hidden mirror sizes the grid cell. */
+.canvas-shape-text { position: relative; display: grid; inline-size: 78%; max-inline-size: 100%; }
+.canvas-shape-text::after { content: attr(data-value); grid-area: 1 / 1; visibility: hidden; white-space: pre-wrap; overflow-wrap: anywhere; padding: 4px; font: inherit; text-align: center; pointer-events: none; }
+.canvas-shape-text textarea { grid-area: 1 / 1; inline-size: 100%; block-size: 100%; min-block-size: 0; resize: none; overflow: hidden; border: 0; background: transparent; padding: 4px; color: var(--notible-text); font: inherit; text-align: center; cursor: text; }
+.canvas-shape-text textarea:focus { outline: none; }
+
+.canvas-node-section { z-index: 0; border: 2px dashed var(--notible-accent); border-radius: 10px; background: color-mix(in srgb, var(--notible-accent) 5%, transparent); }
+.canvas-node-section .canvas-node-section-label { position: absolute; top: -10px; left: 10px; width: auto; max-width: 80%; border: 1px solid var(--notible-border); border-radius: 6px; background: var(--notible-surface); padding: 2px 8px; color: var(--notible-text); font: inherit; font-size: 12px; font-weight: 700; }
+/* A section sits behind its cards, so its resize grip lives in the world layer
+   above every card and is always reachable. */
+.canvas-section-grip { position: absolute; z-index: 4; inline-size: 20px; block-size: 20px; border-radius: 6px; background: color-mix(in srgb, var(--notible-accent) 20%, var(--notible-surface)); border: 1.5px solid var(--notible-accent); cursor: nwse-resize; opacity: .55; transition: opacity 140ms ease; touch-action: none; }
+.canvas-section-grip:hover { opacity: 1; }
+/* The picture and the table grid have their own classes: the node itself already
+   carries canvas-node-image / canvas-node-table, and sharing the name made the
+   node ignore the pointer (image) and scroll twice (table). */
+.canvas-node-picture { inline-size: 100%; block-size: 100%; object-fit: contain; border-radius: 8px; pointer-events: none; }
+.canvas-node-image-empty { display: grid; place-items: center; inline-size: 100%; block-size: 100%; color: var(--notible-muted); font-size: 12px; }
+.canvas-table-grid { display: grid; gap: 2px; padding: 6px; inline-size: 100%; box-sizing: border-box; }
+.canvas-table-grid input { min-inline-size: 0; min-block-size: 24px; border: 1px solid var(--notible-border); border-radius: 4px; padding: 2px 6px; background: var(--notible-surface); color: var(--notible-text); font: inherit; font-size: 12px; }
+
+/* Right-click menu: same look as the Typewriter board menu. */
+.canvas-menu { position: fixed; z-index: 60; display: flex; flex-direction: column; min-width: 168px; padding: 4px; background: var(--notible-surface); border: 1px solid var(--notible-border); border-radius: 8px; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18); transform-origin: top left; }
+.canvas-menu button { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; border: 0; background: transparent; color: var(--notible-text); font: inherit; text-align: left; padding: 7px 10px; border-radius: 6px; cursor: pointer; }
+.canvas-menu button:hover { background: var(--notible-surface-hover, var(--notible-border-subtle)); }
+.canvas-menu button.is-danger { color: var(--notible-danger, var(--notible-text)); }
+.canvas-menu-item { position: relative; }
+.canvas-menu-parent { width: 100%; }
+.canvas-submenu { position: absolute; top: -4px; left: calc(100% - 2px); min-width: 132px; max-height: 320px; overflow-y: auto; }
+.canvas-menu[data-flipped] .canvas-submenu { left: auto; right: calc(100% - 2px); }
+
+@media (prefers-reduced-motion: no-preference) {
+  .canvas-edge-del { animation: canvas-fade-in 140ms ease-out; }
+  .canvas-menu { animation: canvas-menu-in 140ms cubic-bezier(.22, 1, .36, 1); }
+}
+@keyframes canvas-fade-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes canvas-menu-in { from { opacity: 0; transform: scale(.97); } to { opacity: 1; transform: none; } }
+
+/* Report panel */
+.canvas-report-backdrop { position: fixed; inset: 0; z-index: 40; display: grid; place-items: center; background: color-mix(in srgb, var(--notible-text) 28%, transparent); }
+.canvas-report { display: flex; flex-direction: column; gap: 10px; inline-size: min(560px, 92vw); max-block-size: 80vh; border: 1px solid var(--notible-border); border-radius: 14px; padding: 16px; background: var(--notible-surface); box-shadow: 0 20px 50px rgba(0, 0, 0, 0.22); }
+.canvas-report header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.canvas-report header span { display: block; color: var(--notible-muted); font-size: 12px; }
+.canvas-report pre { flex: 1 1 auto; overflow: auto; margin: 0; padding: 12px; border: 1px solid var(--notible-border); border-radius: 8px; background: var(--notible-bg, var(--notible-surface)); font-size: 12px; white-space: pre-wrap; }
+.canvas-report footer { display: flex; gap: 8px; justify-content: flex-end; }
+.canvas-report footer button { border: 1px solid var(--notible-border); border-radius: 8px; padding: 7px 12px; background: transparent; color: var(--notible-text); cursor: pointer; font: inherit; }
+.canvas-report-primary { border-color: var(--notible-accent) !important; color: var(--notible-accent); }
+.canvas-task-pick ul { display: grid; gap: 4px; margin: 0; padding: 0; overflow-y: auto; list-style: none; }
+.canvas-task-pick label { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 8px; cursor: pointer; }
+.canvas-task-pick label:hover { background: var(--notible-hover); }
+.canvas-task-pick footer { display: flex; justify-content: flex-end; gap: 8px; }
+
+/* R4 T11: a card's body moves it; the text cursor appears once you are typing in it. */
+.canvas-node-card textarea:not(:focus) { cursor: grab; }
+.canvas-more { margin-inline-end: 4px; }

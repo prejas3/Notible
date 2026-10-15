@@ -1,0 +1,25 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Notible Test Host",
+  "mainBinaryName": "NotibleTestHost",
+  "identifier": "com.notible.app.test-host",
+  "build": {
+    "beforeBuildCommand": "npm run build:test-host",
+    "frontendDist": "../dist-test-host"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "Notible Test Host",
+        "width": 1440,
+        "height": 900,
+        "minWidth": 960,
+        "minHeight": 640
+      }
+    ]
+  },
+  "bundle": {
+    "createUpdaterArtifacts": false,
+    "targets": ["nsis"]
+  }
+}

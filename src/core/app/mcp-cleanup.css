@@ -1,0 +1,35 @@
+/* MCP-CLEANUP (Hive #13): Settings → AI cleanup. Outlines, no fills. */
+.core-cleanup-request { max-inline-size: var(--core-measure); margin-top: 12px; padding: 14px 16px; border: 1px solid var(--core-line); border-radius: 10px; }
+.core-cleanup-request header { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 12px; }
+.core-cleanup-request header strong { color: var(--core-text); font-size: 13px; font-weight: 600; }
+.core-cleanup-reason { margin-top: 10px; padding-left: 10px; border-left: 2px solid var(--core-line); }
+.core-cleanup-reason small { color: var(--core-muted); font-size: 12px; }
+.core-cleanup-reason p { margin: 2px 0 0; color: var(--core-text); font-size: 13px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.core-cleanup-request ul { margin: 12px 0 0; padding: 0; list-style: none; }
+.core-cleanup-request li { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: var(--core-row-padding) 0; border-top: 1px solid var(--core-line-subtle); }
+.core-cleanup-request li > div { min-width: 0; }
+.core-cleanup-request li strong { display: block; overflow: hidden; color: var(--core-text); font-size: 13px; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
+.core-cleanup-excerpt { display: -webkit-box; margin: 2px 0 0; overflow: hidden; color: var(--core-muted); font-size: 12px; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow-wrap: anywhere; white-space: pre-wrap; }
+.core-cleanup-request li.is-blocked strong { color: var(--core-muted); }
+.core-cleanup-problem { display: block; margin-top: 2px; color: var(--core-danger); font-size: 12px; }
+.core-cleanup-request footer { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; margin-top: 12px; }
+.core-settings-nav-count { display: inline-block; margin-left: 8px; padding: 0 6px; border: 1px solid var(--core-accent); border-radius: 999px; color: var(--core-accent); font-size: 11px; line-height: 16px; }
+
+/* MCP-SETTINGS (Hive #29): connection info and abilities list. */
+.core-mcp-status { display: inline-flex; align-items: center; justify-content: flex-end; gap: 6px; }
+.core-mcp-dot { inline-size: 8px; block-size: 8px; flex: none; border: 1px solid var(--core-muted); border-radius: 50%; }
+.core-mcp-dot.is-live { border-color: var(--core-success); background: var(--core-success); }
+.core-mcp-path { font-family: var(--notible-font-mono); overflow-wrap: anywhere; }
+.core-mcp-config { max-inline-size: var(--core-measure); margin-top: 14px; }
+.core-mcp-tabs { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+.core-mcp-tabs [role="tab"] { padding: 5px 10px; border: 1px solid transparent; border-radius: 7px; background: transparent; color: var(--core-muted); cursor: pointer; font: inherit; font-size: 12px; }
+.core-mcp-tabs [role="tab"]:hover { color: var(--core-ink); background: var(--core-hover); }
+.core-mcp-tabs [role="tab"].is-active { border-color: var(--core-line); color: var(--core-ink); }
+.core-mcp-copy { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; font-size: 12px; }
+.core-mcp-snippet { margin: 8px 0 0; padding: 10px 12px; overflow-x: auto; border: 1px solid var(--core-line); border-radius: 8px; color: var(--core-text); font: 12px/1.5 var(--notible-font-mono); white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; }
+.core-mcp-where { display: block; margin-top: 6px; color: var(--core-faint); font-size: 11px; }
+.core-mcp-abilities { max-inline-size: var(--core-measure); }
+.core-mcp-abilities .core-collection-row { align-items: flex-start; }
+.core-mcp-abilities .core-collection-row > div { display: grid; gap: 2px; }
+.core-mcp-abilities .core-collection-meta { opacity: 1; white-space: normal; line-height: 1.45; }
+.core-mcp-abilities .core-setting-value { flex: none; padding-top: 2px; }

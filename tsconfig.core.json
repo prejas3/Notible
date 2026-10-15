@@ -1,0 +1,7 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true
+  },
+  "include": ["src/vite-env.d.ts", "src/core/standalone.ts", "src/core/app/CoreOnlyApp.tsx"]
+}

@@ -1,0 +1,1984 @@
+/* Registered so `ch` is resolved ONCE, against the root font, and inherits as a
+   length. An unregistered custom property is substituted as raw text, so
+   `95ch` would re-resolve against each element's own font — a 14px row and a
+   16px heading would end up different widths, which is the very drift this
+   token replaces. Measured: 1ch = 8.6px at the root, so 88ch = today's 760px. */
+@property --core-measure { syntax: "<length>"; inherits: true; initial-value: 760px; }
+
+:root {
+  /* A native form control's own popup — the date picker's calendar,
+     essentially — is drawn by the webview's engine outside the DOM, so no
+     rule below can reach into it. The one lever the page has is this
+     property: without it Chromium/WebView2 renders that popup in its
+     default light chrome regardless of the app's own theme, which is why
+     the calendar stayed snow-white in Night mode. `.core-night` overrides
+     it to `dark` below. */
+  color-scheme: light;
+  /* PUBLIC token vocabulary (plugin API 1.0). `--notible-*` is the contract a
+     theme overrides; everything below is defined in terms of it. Renaming or
+     removing one of these is a major API change. */
+  --notible-background: #ffffff;
+  --notible-surface: #ffffff;
+  --notible-raised: #ffffff;
+  --notible-hover: #f5f7fa;
+  --notible-active: #eaf0f8;
+  --notible-border: rgba(25, 40, 65, 0.12);
+  --notible-border-subtle: rgba(25, 40, 65, 0.07);
+  --notible-scroll-thumb: #cbd2dc;
+  --notible-scroll-thumb-strong: #9ba8ba;
+  --notible-text: #172238;
+  --notible-muted: #647084;
+  --notible-faint: #8590a1;
+  --notible-accent: #246be8;
+  --notible-accent-hover: #1957c2;
+  --notible-on-accent: #ffffff;
+  --notible-selected: rgba(36, 107, 232, 0.10);
+  --notible-selected-soft: rgba(36, 107, 232, 0.05);
+  --notible-danger: #963f34;
+  --notible-danger-surface: rgba(150, 63, 52, 0.13);
+  --notible-success: #4f765b;
+  --notible-success-surface: rgba(79, 118, 91, 0.12);
+  --notible-warning: #a36c2e;
+  /* Same six pens the note editor's highlighter already uses
+     (HIGHLIGHT_COLOURS in coreMarkdownMarks.ts) — a public alias so plugin
+     UI can paint a surface the same six colors instead of inventing its
+     own palette. Values match --core-hl-* (private, editor-only) exactly. */
+  --notible-highlight-yellow: #f6e6a8;
+  --notible-highlight-green: #cfe4c4;
+  --notible-highlight-blue: #cadcec;
+  --notible-highlight-pink: #f2d4dc;
+  --notible-highlight-purple: #ddd3ea;
+  --notible-highlight-orange: #f7ddc3;
+  /* Categorical palette. Plugin UI that colours by *kind* (a Gantt milestone
+     vs cycle vs release) needs hues that carry no semantic weight; without
+     these it hardcodes hex and stops following the theme. */
+  --notible-color-blue: #0ea5e9;
+  --notible-color-green: #10b981;
+  --notible-color-amber: #d19a2e;
+  --notible-color-red: #b91c1c;
+  --notible-color-violet: #8b5cf6;
+  --notible-font-serif: Georgia, 'Iowan Old Style', 'Times New Roman', serif;
+  --notible-font-sans: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --notible-font-mono: ui-monospace, "SF Mono", "JetBrains Mono", "Cascadia Code", Consolas, monospace;
+
+  font-family: var(--core-font-sans);
+  color: var(--core-text);
+  background: var(--core-background);
+}
+
+/* PRIVATE aliases. Core's own selectors and plugin CSS consume these; they
+   carry no values of their own, so overriding a --notible-* token restyles
+   everything. Custom properties substitute per element, so a theme must
+   redefine --notible-* at `:root` — which is where both `.core-night` and the
+   host's runtime theme rule now live. */
+:root {
+  --core-background: var(--notible-background);
+  --core-surface: var(--notible-surface);
+  --core-raised: var(--notible-raised);
+  --core-hover: var(--notible-hover);
+  --core-active: var(--notible-active);
+  --core-border: var(--notible-border);
+  --core-border-subtle: var(--notible-border-subtle);
+  --core-scroll-thumb: var(--notible-scroll-thumb);
+  --core-scroll-thumb-strong: var(--notible-scroll-thumb-strong);
+  --core-text: var(--notible-text);
+  --core-muted: var(--notible-muted);
+  --core-faint: var(--notible-faint);
+  --core-accent: var(--notible-accent);
+  --core-accent-hover: var(--notible-accent-hover);
+  --core-on-accent: var(--notible-on-accent);
+  --core-selected: var(--notible-selected);
+  --core-selected-soft: var(--notible-selected-soft);
+  --core-danger: var(--notible-danger);
+  --core-danger-surface: var(--notible-danger-surface);
+  --core-success: var(--notible-success);
+  --core-success-surface: var(--notible-success-surface);
+  --core-warning: var(--notible-warning);
+  /* Mermaid's fixed themes are light palettes. In Night they sit on a soft,
+     cool panel that matches Midnight instead of a white box (Hive #41); the
+     Notible theme and a picked background need no panel at all. */
+  --core-mermaid-fixed-background: #dce3ed;
+  --core-font-serif: var(--notible-font-serif);
+  --core-font-sans: var(--notible-font-sans);
+  --core-ink: var(--notible-text);
+  --core-bg: var(--notible-background);
+  --core-line: var(--notible-border);
+  --core-line-subtle: var(--notible-border-subtle);
+
+  /* Plugin-surface aliases. Every plugins/builtin/*.css file uses these
+   * generic token names with a hardcoded light-mode fallback
+   * (`var(--surface, #fff)`), since a plugin can't assume which host it's
+   * mounted in. Without these, Test Host never defined `--surface` etc. at
+   * all, so every plugin panel (Finance, Views, Planning, Canvas,
+   * Calendar, Project Dashboard, Properties) silently fell through to the
+   * hardcoded fallback regardless of the actual paper/night/custom theme —
+   * defining them here is what actually makes plugin UI follow the theme. */
+  --surface: var(--notible-surface);
+  --surface-raised: var(--notible-raised);
+  --surface-muted: var(--notible-hover);
+  --ink: var(--notible-text);
+  --text: var(--notible-text);
+  --muted: var(--notible-muted);
+  --faint: var(--notible-faint);
+  --line: var(--notible-border);
+  --border: var(--notible-border);
+  --border-subtle: var(--notible-border-subtle);
+  --accent: var(--notible-accent);
+  --bg: var(--notible-background);
+  --selected: var(--notible-selected);
+  --selected-soft: var(--notible-selected-soft);
+  --accent-hover: var(--notible-accent-hover);
+  --on-accent: var(--notible-on-accent);
+  --hover: var(--notible-hover);
+  --active: var(--notible-active);
+  --danger: var(--notible-danger);
+  --danger-surface: var(--notible-danger-surface);
+  --success: var(--notible-success);
+  --success-surface: var(--notible-success-surface);
+  --warning: var(--notible-warning);
+  --color-blue: var(--notible-color-blue);
+  --color-green: var(--notible-color-green);
+  --color-amber: var(--notible-color-amber);
+  --color-red: var(--notible-color-red);
+  --color-violet: var(--notible-color-violet);
+
+  /* Two measures instead of nine constants. Everything on a Core surface is
+     either a DOCUMENT (a column you read down: settings rows, the editor) or a
+     COLLECTION (N items that grow with use: backups, trash, installed plugins).
+     A document gets --core-measure; a collection gets a grid whose column count
+     falls out of the space via auto-fill, so there is no breakpoint to guess.
+     --core-measure is in `ch` so the column follows the font size instead of
+     freezing at one pixel count; the value is picked to reproduce the 760px the
+     screens shipped with, measured in the running app, not derived. */
+  --core-measure: 88ch;   /* registered above, so this resolves once, here */
+  --core-collection-min: 300px;
+  --core-row-padding: 10px;
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; min-width: 760px; background: var(--core-background); color: var(--core-text); }
+button, input, textarea, select { font: inherit; }
+button { color: inherit; }
+/* Checkboxes/radios keep their intrinsic box — the 36px floor here was
+   stretching every plugin checkbox into a tall sliver. `:not(:where(…))`
+   excludes them WITHOUT adding specificity (:where is always 0), so this
+   stays a 0,0,1 element rule and any `.x-input` class still overrides it —
+   raising it to 0,2,1 had boxed every note title and every table cell. */
+input:not(:where([type="checkbox"], [type="radio"])), textarea, select {
+  min-block-size: 36px;
+  border: 1px solid var(--core-border);
+  border-radius: 7px;
+  background: var(--core-raised);
+  color: var(--core-text);
+}
+input::placeholder, textarea::placeholder { color: var(--core-faint); }
+input:disabled, textarea:disabled, select:disabled, button:disabled { cursor: not-allowed; opacity: .55; }
+input:focus-visible, textarea:focus-visible, select:focus-visible, button:focus-visible {
+  outline: 2px solid var(--core-accent);
+  outline-offset: 2px;
+}
+
+.core-shell { min-height: 100dvh; block-size: 100dvh; display: grid; grid-template-columns: 272px minmax(0, 1fr); overflow: hidden; background: var(--core-bg); }
+.core-sidebar-spacer { flex: 1; }.core-settings-launcher { display: flex; align-items: center; gap: 10px; width: 100%; margin-top: 4px; border: 0; border-radius: 8px; background: transparent; color: var(--core-muted); padding: 10px 10px; cursor: pointer; font: inherit; text-align: left; }.core-settings-launcher:hover, .core-settings-launcher.is-active { background: var(--core-hover); color: var(--core-ink); }
+.core-sidebar { display: flex; flex-direction: column; min-height: 0; gap: 22px; padding: 24px 16px 16px; border-right: 1px solid var(--core-line); background: var(--core-surface); overflow: hidden; }
+.core-brand { display: flex; align-items: center; gap: 8px; padding: 0 8px; }
+.core-brand-mark { flex: 0 0 auto; width: 22px; height: 22px; }
+.core-brand-text { font-family: var(--core-font-serif); font-weight: 400; font-size: 21px; letter-spacing: -.03em; line-height: 1; color: var(--core-ink); }
+.core-sidebar > button { width: 100%; text-align: left; }
+.core-sidebar-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.core-sidebar-actions > button { width: auto; }
+.core-secondary-action { border: 0; background: transparent; border-radius: 8px; color: var(--core-muted); padding: 7px 12px; cursor: pointer; font: inherit; text-align: left; }.core-secondary-action:hover { color: var(--core-ink); background: var(--core-hover); }
+.core-secondary-action-danger { color: var(--core-danger); }
+.core-secondary-action-danger:hover { color: var(--core-danger); background: var(--core-danger-surface); }
+.core-nav { display: grid; gap: 4px; }
+.core-nav button { display: grid; grid-template-columns: 20px minmax(0, 1fr); align-items: center; gap: 7px; border: 0; border-radius: 8px; padding: 9px 10px; color: var(--core-muted); background: transparent; text-align: left; cursor: pointer; }
+.core-nav button:hover, .core-nav button.is-active { color: var(--core-ink); background: var(--core-selected); }
+.core-nav small { color: var(--core-faint); }
+.core-sidebar-footer { margin-top: auto; display: grid; grid-template-columns: 9px 1fr; align-items: center; gap: 6px; padding: 10px 10px; color: var(--core-muted); font-size: 11px; }
+.core-sidebar-footer small { grid-column: 2; color: var(--core-faint); }
+.core-status-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--core-success); box-shadow: 0 0 0 3px var(--core-success-surface); }
+.core-main { display: flex; min-width: 0; min-height: 0; flex-direction: column; padding: clamp(16px, 2vw, 30px) clamp(16px, 2vw, 32px) clamp(20px, 2.5vw, 36px); overflow: auto; }
+.core-topbar { display: flex; align-items: flex-end; justify-content: space-between; gap: 20px; width: 100%; margin: 0 0 24px; }
+.core-topbar h1 { margin: 4px 0 0; font-size: 29px; letter-spacing: -.04em; }
+.core-eyebrow { margin: 0; color: var(--core-faint); font-size: 11px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; }
+.core-top-actions { display: flex; align-items: center; gap: 10px; }
+.core-version { color: var(--core-faint); font-size: 11px; }
+.core-alert, .core-notice { width: 100%; margin: 0 0 14px; border-radius: 8px; padding: 10px 12px; font-size: 13px; }
+.core-alert { border: 1px solid color-mix(in srgb, var(--core-danger) 42%, var(--core-border)); background: var(--core-danger-surface); color: var(--core-danger); }
+.core-notice { border: 1px solid color-mix(in srgb, var(--core-success) 42%, var(--core-border)); background: var(--core-success-surface); color: var(--core-success); }
+/* A notice floats instead of pushing the page down for four seconds: in the
+   flow it made every screen jump when it came and went (CE47). Top right,
+   clear of the update card and plugin notices at the bottom. */
+.core-main > .core-notice { position: fixed; top: 14px; right: 18px; z-index: 96; width: auto; max-width: min(420px, calc(100vw - 36px)); margin: 0; box-shadow: 0 10px 28px rgb(0 0 0 / 14%); animation: core-view-in 160ms ease-out; }
+.core-notes-layout { display: grid; grid-template-columns: 280px minmax(0, 1fr); width: 100%; min-height: 590px; height: max(590px, calc(100dvh - 126px)); margin: 0; overflow: hidden; border: 1px solid var(--core-line); border-radius: 12px; background: var(--core-surface); box-shadow: 0 10px 30px rgba(55, 48, 39, 0.08); }
+.core-list-panel { border-right: 1px solid var(--core-line-subtle); background: var(--core-bg); }
+.core-search { display: flex; gap: 5px; padding: 13px; border-bottom: 1px solid var(--core-line-subtle); }
+.core-search input { min-width: 0; flex: 1; min-block-size: 36px; border: 1px solid var(--core-border); border-radius: 7px; padding: 8px 10px; outline: none; background: var(--core-raised); color: var(--core-text); }
+.core-search input:focus, .core-title-input:focus { border-color: var(--core-accent); box-shadow: 0 0 0 3px var(--core-selected-soft); }
+/* One focus ring (E24): the border + soft ring above, not also the global outline. */
+.core-search input:focus-visible, .core-title-input:focus-visible { outline: none; }
+.core-search button { width: 36px; min-block-size: 36px; border: 1px solid var(--core-border); border-radius: 7px; background: var(--core-raised); cursor: pointer; }
+/* Filters read as a wrapping row of pills instead of a boxed form — same
+   surface as the search field above it, no per-field borders. Each pill is
+   the themed Select/DatePicker (src/core/ui) with its trigger reskinned
+   below; the popovers/calendar they open are untouched, so filtering still
+   gets the real dropdown and calendar, just a lighter-weight trigger. */
+.core-search-filters { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 8px 13px 12px; border-bottom: 1px solid var(--core-line-subtle); }
+.core-search-chip { flex: 0 1 auto; width: auto; }
+.core-search-chip .nb-control-trigger {
+  width: auto;
+  height: 26px;
+  border: 0;
+  border-radius: 999px;
+  padding: 0 10px;
+  gap: 5px;
+  background: var(--core-hover);
+  color: var(--core-text);
+  font-size: 12px;
+  transition: background-color 140ms ease, color 140ms ease;
+}
+.core-search-chip .nb-control-trigger:hover { background: var(--core-active); }
+.core-search-chip .nb-control-trigger:active { transform: scale(.96); }
+.core-search-chip .nb-control-trigger:focus,
+.core-search-chip .nb-control-trigger:focus-visible { border: 0; padding: 0 10px; box-shadow: 0 0 0 2px var(--core-selected-soft); }
+.core-search-chip.is-active .nb-control-trigger { background: var(--core-selected); color: var(--core-accent); font-weight: 600; }
+.core-search-chip .nb-caret { border-color: var(--core-faint); }
+.core-search-chip.is-active .nb-caret { border-color: var(--core-accent); }
+.core-search-chip .nb-value, .core-search-chip .nb-placeholder { max-width: 108px; }
+/* The two date pickers share one pill instead of getting one each, so "any
+   date" still reads as a single chip like the others. Deliberately NOT also
+   `.core-search-chip` — that class's own `:hover`/`:focus` rules on
+   `.nb-control-trigger` are equal-specificity to these and were winning over
+   the transparent-inner-field look here, which is what made hovering a date
+   field flash an ugly solid pill instead of the flat combined one. */
+.core-search-chip-dates {
+  display: inline-flex;
+  flex: 0 1 auto;
+  align-items: center;
+  gap: 4px;
+  height: 26px;
+  padding: 0 10px;
+  border-radius: 999px;
+  background: var(--core-hover);
+  color: var(--core-faint);
+  transition: background-color 140ms ease, color 140ms ease;
+}
+.core-search-chip-dates:hover { background: var(--core-active); }
+.core-search-chip-dates.is-active { background: var(--core-selected); color: var(--core-accent); }
+.core-search-chip-dates .nb-datepicker { width: 58px; flex: none; }
+.core-search-chip-dates .nb-control-trigger {
+  width: 100%;
+  height: 26px;
+  border: 0;
+  border-radius: 0;
+  padding: 0;
+  background: transparent;
+  color: inherit;
+  font-size: 12px;
+  text-align: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: none;
+}
+.core-search-chip-dates .nb-control-trigger:hover { background: transparent; }
+.core-search-chip-dates .nb-control-trigger:focus,
+.core-search-chip-dates .nb-control-trigger:focus-visible { border: 0; padding: 0; box-shadow: none; background: transparent; }
+.core-search-chip-dash { font-size: 11px; opacity: .7; }
+.core-search-chip-clear { flex: 0 0 100%; justify-content: center; margin-top: 2px; }
+@media (prefers-reduced-motion: no-preference) {
+  .core-search-filters { animation: core-search-chips-in 160ms cubic-bezier(.16, 1, .3, 1) both; }
+}
+@keyframes core-search-chips-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: none; }
+}
+.core-list-heading { display: flex; justify-content: space-between; padding: 14px 14px 8px; color: var(--core-faint); font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+.core-list-heading small { color: var(--core-faint); }
+.core-object-list { display: grid; align-content: start; }
+.core-object-tree-row { display: flex; align-items: stretch; min-width: 0; border-top: 2px solid transparent; }
+.core-object-tree-row.is-drag-over { border-top-color: var(--core-accent); }.core-object-tree-row .core-object-row { flex: 1; min-width: 0; }.core-tree-toggle { display: flex; align-items: center; justify-content: center; width: 22px; flex: 0 0 22px; border: 0; background: transparent; color: var(--core-muted); cursor: pointer; font-size: 18px; }.core-tree-toggle:not(.is-visible) { cursor: default; }.core-object-type { color: var(--core-muted); text-transform: capitalize; }.type-project { color: #8b5cf6; }.type-folder { color: #2f80a3; }.type-ticket { color: #b85c5c; }
+.core-object-row { display: grid; gap: 4px; border: 0; border-left: 3px solid transparent; padding: 11px 14px 11px 17px; background: transparent; text-align: left; cursor: pointer; }
+.core-object-row:hover { background: var(--core-hover); }
+.core-object-row.is-selected { border-left-color: var(--core-accent); background: var(--core-selected); }
+.core-object-row strong { overflow: hidden; color: var(--core-ink); font-size: 13px; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
+.core-object-row small { overflow: hidden; color: var(--core-faint); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.core-empty { padding: 34px 18px; color: var(--core-faint); font-size: 13px; line-height: 1.5; text-align: center; }
+.core-editor-panel { display: flex; min-width: 0; min-height: 0; flex-direction: column; padding: 24px 30px 30px; }
+.core-editor-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 24px; }
+.core-saved, .core-dirty { font-size: 11px; }
+.core-saved { color: #4f9b6e; }
+/* Stays mounted (never unmounts) so neighboring toolbar buttons don't reflow
+   every keystroke — only opacity toggles, on a reserved-width box, and the
+   fade-in is delayed so a save that finishes within ~300ms never flashes. */
+.core-dirty {
+  display: inline-block;
+  min-width: 92px;
+  /* Neutral, not the warning colour: saving is normal, not a problem (CP63). */
+  color: var(--core-muted);
+  opacity: 0;
+  transition: opacity 0.12s ease 0.3s;
+}
+.core-dirty.is-visible { opacity: 1; }
+.core-dirty.is-saved { transition-delay: 0s; }
+.core-editor-rules { color: var(--core-muted); font-size: 11px; }
+.core-title-input { display: block; width: min(100%, 920px); min-block-size: 42px; border: 1px solid transparent; border-radius: 7px; padding: 4px 7px; outline: none; background: transparent; color: var(--core-text); font: inherit; font-size: 30px; font-weight: 750; letter-spacing: -.04em; line-height: 1.15; /* auto-grow + wrap long titles instead of clipping on small screens */ field-sizing: content; resize: none; white-space: pre-wrap; overflow-wrap: anywhere; }
+.core-editor-meta { margin: 5px 7px 22px; color: var(--core-faint); font-size: 11px; }
+.core-object-kind-banner { display: flex; align-items: center; gap: 8px; margin: 20px 0 8px; color: var(--core-muted); font-size: 11px; text-transform: uppercase; letter-spacing: .08em; }.core-object-kind-banner strong { color: var(--core-accent); }.core-object-kind-banner span { border: 1px solid var(--core-line); border-radius: 999px; padding: 3px 7px; text-transform: none; letter-spacing: 0; }
+.core-editor-textarea { min-height: 390px; flex: 1; resize: none; border: 1px solid transparent; border-radius: 8px; padding: 16px; outline: none; background: transparent; color: var(--core-text); font-size: 15px; line-height: 1.7; }
+.core-editor-textarea:focus { border-color: transparent; box-shadow: none; }
+.core-editor-content { width: 100%; min-width: 0; min-height: 390px; flex: 1; overflow: auto; border: 0; border-radius: 8px; padding: 16px; outline: none !important; background: transparent; color: var(--core-text); font-family: var(--nb-editor-font, inherit); font-size: var(--notible-editor-font-size, 15px); line-height: var(--notible-editor-line-height, 1.7); overflow-wrap: anywhere; word-break: break-word; }
+.core-editor-content:focus, .core-editor-content:focus-visible { border: 0; outline: none !important; box-shadow: none; }
+.core-editor-content:empty::before { content: attr(data-placeholder); color: var(--core-faint); pointer-events: none; }
+.core-editor-content h1, .core-editor-content h2, .core-editor-content h3 { margin: 0 0 12px; color: var(--core-text); line-height: 1.18; letter-spacing: -.035em; }
+/* Body headings stay below the note title (title: clamp(28px, 2.4vw, 36px)), E19. */
+.core-editor-content h1 { font-size: clamp(24px, 2vw, 30px); }
+.core-editor-content h2 { font-size: clamp(20px, 1.65vw, 25px); }
+.core-editor-content h3 { font-size: clamp(17px, 1.35vw, 20px); }
+.core-editor-content p { margin: 0 0 12px; }
+/* Footnotes: `[^n]` markers are small raised links; their `[^n]: ...` definitions sit smaller under the text, the first one behind a hairline. */
+.core-editor-content .core-md-fnref { color: var(--core-accent); font-size: .72em; vertical-align: super; line-height: 0; cursor: default; }
+.core-editor-content .core-md-fnref:hover { text-decoration: underline; }
+.core-editor-content .core-md-fndef { font-size: .86em; color: var(--core-muted); margin-bottom: 6px; }
+.core-editor-content .core-md-fndef .core-md-fnref { font-size: 1em; vertical-align: baseline; line-height: inherit; }
+.core-editor-content .core-md-fnlink { color: var(--core-accent); text-decoration: underline; text-underline-offset: 2px; }
+/* [text](url): the brackets and address show only while the caret is in the
+   link (.is-editing, set by CoreMarkdownEditor); otherwise text + arrow. */
+.core-editor-content .core-md-tab { white-space: pre; tab-size: 4; }
+/* A picture on its own line: inline in its paragraph, so the caret can stand
+   right after it (Word-style). The general .core-md-image rule stays block
+   for pictures that share a line with text. */
+.core-editor-content .core-md-picture > .core-md-image { display: inline-block; margin: 4px 0; }
+/* Room under the last block: a note ending in a diagram or picture had no
+   editor area left below it to click into. */
+.core-editor-content { padding-bottom: 96px; }
+/* Body text starts where the title and the kind label do (E26); 1px = the title field's border. */
+.core-editor-content { padding-inline: 1px; }
+/* The code block's label bar is chrome, not text: a click near it must not
+   park the caret in "mermaid". */
+.core-editor-content .core-code-toolbar, .core-editor-content .core-code-render { user-select: none; }
+.core-editor-content .core-md-link { color: var(--core-accent); text-decoration: underline; text-underline-offset: 2px; }
+.core-editor-content .core-md-link:not(.is-editing) > .core-md-link-mark { display: none; }
+.core-editor-content .core-md-link:not(.is-editing)::after { content: "\2197"; font-size: .75em; margin-left: 1px; text-decoration: none; display: inline-block; opacity: .7; }
+.core-editor-content .core-md-link.is-editing > .core-md-link-mark { color: var(--core-muted); text-decoration: none; }
+.core-editor-content .core-md-fnref, .core-editor-content .core-md-fndef { border-radius: 3px; transition: background-color .4s ease; }
+.core-editor-content .core-md-fnref.is-fn-flash, .core-editor-content .core-md-fndef.is-fn-flash { background: color-mix(in srgb, var(--core-accent) 24%, transparent); }
+.core-editor-content .core-md-fndef .core-md-fnref { cursor: default; }
+.core-editor-content p:not(.core-md-fndef) + .core-md-fndef { margin-top: 28px; padding-top: 12px; border-top: 1px solid var(--core-border-subtle); }
+/* A4 page rule from a prose profile: a dashed hairline after every page of text, drawn in an overlay beside the editable area (never inside it). */
+.core-page-rules { position: absolute; inset: 0; z-index: 1; pointer-events: none; }
+.core-page-rule { position: absolute; height: 0; border-top: 1px dashed color-mix(in srgb, var(--core-muted) 75%, transparent); }
+.core-editor-content ul, .core-editor-content ol { margin: 0 0 12px; padding-left: 28px; }
+.core-editor-content li { padding-left: 3px; }
+/* Nested bullets (E5): one flat list, each level indented. */
+.core-editor-content li[data-indent="1"] { margin-left: 1.5em; }
+.core-editor-content li[data-indent="2"] { margin-left: 3em; }
+.core-editor-content li[data-indent="3"] { margin-left: 4.5em; }
+.core-editor-content li[data-indent="4"] { margin-left: 6em; }
+.core-editor-content li[data-indent="5"] { margin-left: 7.5em; }
+.core-editor-content li[data-indent="6"] { margin-left: 9em; }
+.core-editor-content ul.core-md-list > li[data-indent]:not([data-task]) { list-style-type: circle; }
+.core-editor-content blockquote { margin: 0 0 12px; border-left: 3px solid var(--core-accent); padding: 7px 14px; background: var(--core-selected-soft); color: var(--core-muted); }
+.core-editor-content hr { margin: 20px 0; border: 0; border-top: 1px solid var(--core-border); }
+.core-editor-content pre { margin: 0 0 12px; overflow: auto; border: 1px solid var(--core-border-subtle); border-radius: 8px; padding: 12px; background: var(--core-background); color: var(--core-text); font: 13px/1.55 ui-monospace, SFMono-Regular, Consolas, monospace; white-space: pre-wrap; }
+.core-editor-content pre.core-code-block { padding: 0; }
+.core-editor-content .core-code-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 7px 10px; border-bottom: 1px solid var(--core-border-subtle); font: 11px/1.4 ui-sans-serif, system-ui, sans-serif; user-select: none; }
+.core-editor-content .core-code-lang { color: var(--core-muted); text-transform: uppercase; letter-spacing: .04em; }
+/* The language label opens the language menu (E9) but still looks like the quiet label. */
+.core-editor-content button.core-code-lang { border: 0; border-radius: 4px; padding: 0 3px; background: transparent; font: inherit; cursor: pointer; }
+.core-editor-content button.core-code-lang:hover { background: var(--core-hover); color: var(--core-text); }
+.core-editor-content .core-code-copy { border: 1px solid transparent; border-radius: 6px; padding: 3px 8px; background: transparent; color: var(--core-muted); cursor: pointer; font: inherit; }
+.core-editor-content .core-code-copy:hover { color: var(--core-ink); background: var(--core-hover); }
+/* CODE-FORMAT (Hive #43): Format sits beside Copy, only in an editable note (the renderer marks it hidden). */
+.core-editor-content[contenteditable="true"] .core-code-format { display: inline-block; margin-left: auto; border: 1px solid transparent; border-radius: 6px; padding: 3px 8px; background: transparent; color: var(--core-muted); cursor: pointer; font: inherit; }
+.core-editor-content .core-code-format:hover, .core-editor-content[contenteditable="true"] .core-code-format[aria-expanded="true"] { color: var(--core-ink); background: var(--core-hover); }
+.core-editor-content pre.core-code-block code { display: block; padding: 12px; }
+/* CODE-LOOK (Hive #32): Settings → Appearance → Code blocks sets these per device (codeLook.ts); unset = today's look. */
+.core-editor-content pre.core-code-block > code { overflow-x: auto; font-size: var(--core-code-size, 13px); line-height: var(--core-code-line-height, 1.55); white-space: var(--core-code-wrap, pre-wrap); tab-size: var(--core-code-tab-size, 8); }
+/* A rendered query hides its own source until you click back into it — the
+   block reads as the table it produces, not as code. `.is-editing` (caret inside, set by CoreMarkdownEditor) brings
+   the source back (the toolbar click handler drops the caret in there).
+   Only when the renderer has actually drawn a result (`.nq-ready`); an error
+   or a still-loading block keeps its code visible. */
+.core-editor-content pre.core-code-block:has(> .core-code-render.nq-ready):not(.is-editing) > code { max-height: 0; padding-block: 0; overflow: hidden; opacity: 0; }
+.core-editor-content pre.core-code-block:has(> .core-code-render.nq-ready):not(.is-editing) > .core-code-toolbar { cursor: pointer; }
+.core-editor-content pre.core-code-block:has(> .core-code-render.nq-ready):not(.is-editing) > .core-code-toolbar .core-code-lang::after { content: " · " attr(data-edit-label); opacity: .6; }
+.core-editor-content pre.core-code-block > .core-code-render { border-top: 1px solid var(--core-border-subtle); }
+.core-editor-content table { width: 100%; margin: 0 0 12px; border-collapse: collapse; }
+.core-editor-content th, .core-editor-content td { border-bottom: 1px solid var(--core-border-subtle); padding: 8px 10px; text-align: left; }
+.core-editor-content th { color: var(--core-text); font-weight: 700; }
+.core-editor-content .core-md-wikilink { color: var(--core-accent); font-weight: 650; cursor: pointer; text-decoration: underline; text-decoration-style: dotted; text-underline-offset: 3px; }
+.core-editor-content .core-md-wikilink:hover { color: var(--core-ink); text-decoration-style: solid; }
+/* Outside the caret a [[link]] shows its target's current title, without
+   brackets (E8, E22); the raw text is still there, only sized to nothing. */
+.core-editor-content .core-md-wikilink[data-current-title]:not(.is-editing) { font-size: 0; }
+.core-editor-content .core-md-wikilink[data-current-title]:not(.is-editing)::before { content: attr(data-current-title); font-size: var(--core-wl-size, 1rem); }
+.core-editor-content .core-md-wikilink.is-missing { color: var(--core-muted); text-decoration-style: dashed; }
+.core-editor-content .core-md-wikilink:focus-visible { outline: 2px solid var(--core-accent); outline-offset: 2px; }
+.core-editor-content .core-md-block { display: grid; gap: 4px; min-height: 1.4em; margin: 4px 0 16px; border: 1px solid var(--core-border); border-radius: 8px; padding: 10px 12px; background: var(--core-selected-soft); }
+.core-editor-content .core-md-block:last-child, .core-editor-content pre:last-child { margin-bottom: 8px; }
+.core-editor-content .core-md-block strong { color: var(--core-accent); font-size: 11px; letter-spacing: .08em; text-transform: uppercase; }
+.core-editor-content .core-md-task-list { list-style: none; padding-left: 4px; }
+.core-editor-content .core-md-task-list li { display: flex; align-items: flex-start; gap: 2px; }
+.core-editor-content .core-md-task-box { flex: 0 0 auto; display: inline-grid; place-items: center; width: 16px; height: 16px; margin-top: 3px; border: 1px solid var(--core-accent); border-radius: 4px; color: var(--core-on-accent); background: var(--core-accent); font-size: 11px; line-height: 1; }
+/* Unchecked reads as unchecked: outline only, filled once ticked (E4). */
+.core-editor-content li[data-checked="false"] > .core-md-task-box { border-color: var(--core-muted); background: transparent; cursor: pointer; }
+.core-editor-content li[data-checked="true"] > .core-md-task-box { cursor: pointer; }
+/* vertical-align keeps the caret sitting after the picture on the picture's
+   baseline: without it the browser draws it at the top of the line box, which
+   read as a cursor floating by the top-right corner. */
+.core-editor-content .core-md-image { display: block; max-width: 100%; border-radius: 8px; margin: 4px 0 16px; vertical-align: bottom; }
+/* Text run sharing a list item / paragraph with an image — see
+   inlineHtmlWithImageLines in CoreMarkdownEditor.tsx for why it must be a
+   block sibling of the image rather than inline flow around it. */
+.core-editor-content .core-md-line { display: block; }
+/* Long-form focus mode (prose profile `focusMode`): narrow measure, the
+   caret's block bright, everything else dimmed. Toggled from the toolbar. */
+.core-editor-content.is-prose-focus { width: 100%; max-width: none; margin-inline: 0; padding-block: clamp(28px, 7vh, 72px); }
+.core-editor-content.is-prose-focus > * { transition: opacity .38s cubic-bezier(.16, 1, .3, 1); opacity: .34; }
+.core-editor-content.is-prose-focus > .is-prose-focus-line { opacity: 1; }
+.core-editor-content.is-prose-focus:focus-within > .is-prose-focus-line { opacity: 1; }
+.core-editor-empty { display: grid; place-content: center; height: 100%; min-height: 480px; color: var(--core-muted); text-align: center; }
+.core-editor-empty h2 { margin: 12px 0 4px; color: var(--core-ink); }
+.core-editor-empty p { max-width: 300px; margin: 0; font-size: 13px; line-height: 1.5; text-wrap: balance; }
+.core-empty-icon { display: grid; place-items: center; width: 44px; height: 44px; margin: auto; border-radius: 50%; background: var(--core-selected); color: var(--core-accent); font-size: 20px; }
+.core-card-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-auto-rows: auto; align-content: start; gap: 16px; width: 100%; min-height: calc(100dvh - 126px); margin: 0; }
+.core-card { border: 1px solid var(--core-line); border-radius: 12px; padding: 22px; background: var(--core-surface); box-shadow: 0 10px 30px rgba(55, 48, 39, 0.05); }
+.core-card-wide { grid-column: 1 / -1; }
+.core-card-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; }
+.core-card h2, .core-card h3 { margin: 5px 0 10px; color: var(--core-ink); letter-spacing: -.02em; }
+.core-card p { color: var(--core-muted); font-size: 14px; line-height: 1.6; }
+.core-metric-row { display: flex; gap: 40px; margin-top: 22px; }
+.core-metric-row div { display: grid; gap: 3px; }
+.core-metric-row strong { color: var(--core-ink); font-size: 24px; }
+.core-metric-row span, .core-muted { color: var(--core-faint); font-size: 11px; }
+.core-check-list { display: grid; gap: 11px; margin: 18px 0 0; padding: 0; color: #4f765b; font-size: 13px; list-style: none; }
+.core-setting-row { display: grid; grid-template-columns: minmax(0, 1fr) 190px; align-items: center; gap: 20px; border-bottom: 1px solid var(--core-line-subtle); padding: 17px 0; color: var(--core-muted); font-size: 13px; }
+/* The control column is 190px but its content (a switch, a short value, a
+   button) is narrower — pin it to the right edge so every row lines up. */
+.core-setting-row > :last-child { justify-self: end; }
+.core-settings-field { width: min(100%, 220px); padding: 8px 10px; }
+.core-setting-row label, .core-setting-row small { display: block; }
+.core-setting-row label { color: var(--core-ink); font-weight: 650; }
+.core-setting-row small { margin-top: 5px; color: var(--core-faint); font-size: 11px; line-height: 1.45; }
+/* ponytail: native orphan/widow control across every Settings blurb, so no
+   single "a" or "to" ever gets stranded on its own line — beats auditing rows. */
+.core-settings-section p, .core-settings-section small, .core-settings-section label,
+.core-setting-row small, .core-settings-group-heading p, .core-settings-action p { text-wrap: pretty; }
+/* A dropdown holding "12 pt" does not need 190px. Fixed width so more rows can
+   join the PDF group later without each select being a different size. */
+.core-setting-row .nb-select { width: 120px; }
+.core-setting-sidebar-tree { grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr)); }
+.core-setting-sidebar-tree .nb-select { width: 100%; }
+.core-setting-row select, select.core-select {
+  appearance: none;
+  width: min(100%, 220px);
+  min-block-size: 38px;
+  border: 1px solid var(--core-border);
+  border-radius: 7px;
+  padding: 8px 30px 8px 10px;
+  background: var(--core-raised) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%236e675d' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") no-repeat right 10px center;
+  color: var(--core-text);
+  font-size: 13px;
+  line-height: 1.3;
+}
+.core-setting-row select option, select.core-select option { background: var(--core-raised); color: var(--core-text); }
+.core-night .core-setting-row select, .core-night select.core-select { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%23c7bba7' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"); }
+.core-plugin-empty { margin-top: 16px; border: 1px dashed var(--core-line); border-radius: 8px; padding: 20px; color: var(--core-faint); font-size: 13px; text-align: center; }
+.core-plugin-list { display: grid; gap: 8px; margin-top: 18px; }
+.core-plugin-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 14px; border: 1px solid var(--core-line-subtle); border-radius: 8px; padding: 12px 14px; }
+.core-plugin-row strong, .core-plugin-row small { display: block; }
+.core-plugin-row strong { color: var(--core-ink); font-size: 13px; }
+.core-plugin-row small { margin-top: 3px; color: var(--core-faint); font-size: 11px; }
+.core-plugin-state { border-radius: 999px; padding: 4px 8px; background: var(--core-hover); color: var(--core-muted); font-size: 10px; font-weight: 700; text-transform: uppercase; }
+.core-plugin-state.active { background: var(--core-success-surface); color: var(--core-success); }
+.core-plugin-actions { display: flex; gap: 6px; }
+/* The Matrix is a catalogue, not a document: it deliberately uses the full
+   width of the pane. The 760px measure is a rule for prose. */
+.core-matrix-toolbar { padding-top: 2px; }
+.core-matrix-count { margin: 0 0 16px; color: var(--core-faint); font-size: 12px; }
+.core-matrix-count strong { color: var(--core-accent); font-size: 15px; font-weight: 700; }
+.core-matrix-presets { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 20px 0; }
+.core-matrix-label { margin-right: 4px; color: var(--core-faint); font-size: 11px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; }
+.core-matrix-presets button { border: 1px solid var(--core-line); border-radius: 999px; padding: 8px 14px; background: var(--core-surface); color: var(--core-ink); cursor: pointer; }
+.core-matrix-apply { border: 1px solid var(--core-line); border-radius: 8px; padding: 8px 11px; background: var(--core-surface); color: var(--core-ink); cursor: pointer; }
+.core-matrix-presets button:hover, .core-matrix-presets button.is-active { border-color: var(--core-accent); background: var(--core-selected); color: var(--core-accent-hover); }
+/* Plugins screen: the middle column keeps the shared Settings measure and
+   holds a minimalist flat list; a second measure-wide pane sits beside it
+   for the selected plugin's detail, sticky while the list scrolls. */
+.core-settings-shell.has-plugins-detail { grid-template-columns: 220px minmax(0, var(--core-measure)) minmax(0, var(--core-measure)); }
+.core-plugins-detail-pane { align-self: start; position: sticky; top: 16px; max-height: calc(100dvh - 160px); overflow-y: auto; padding-left: 34px; border-left: 1px solid var(--core-line-subtle); }
+
+.core-plugin-index-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 18px; }
+.core-plugin-index-toolbar-actions { display: flex; align-items: center; gap: 10px; }
+.core-plugin-index-count { color: var(--core-faint); font-size: 12px; }
+.core-plugin-index-count strong { color: var(--core-ink); }
+.core-plugin-index-update-all { min-block-size: 32px; padding: 6px 12px; font-size: 13px; }
+.core-plugin-index-group { margin-bottom: 26px; }
+.core-matrix-category-heading { margin: 0 0 6px; color: var(--core-faint); font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+.core-matrix-category-grid { display: grid; align-content: start; gap: 8px; }
+
+/* One row per plugin: icon, name, meta, switch. A hairline between rows, no
+   box — the Gemini reference was an index, not a wall of cards. */
+.core-plugin-index-row { display: flex; align-items: center; gap: 12px; padding: 9px 4px; border-bottom: 1px solid var(--core-line-subtle); }
+.core-plugin-index-row:hover { background: var(--core-selected-soft); }
+.core-plugin-index-row.is-selected { background: var(--core-selected); }
+.core-plugin-index-open { display: flex; align-items: baseline; gap: 10px; flex: 1; min-width: 0; padding: 0; border: 0; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.core-plugin-index-icon { flex: none; align-self: center; color: var(--core-muted); }
+.core-plugin-index-name { overflow: hidden; color: var(--core-ink); font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
+.core-plugin-index-meta { flex: none; color: var(--core-faint); font-size: 11px; }
+.core-plugin-index-row.is-selected .core-plugin-index-icon { color: var(--core-accent); }
+/* Reload sits left of the switch. Plain: re-read the plugin from disk.
+   Highlighted (is-update): a newer signed version is published — one click
+   installs it and reloads. */
+.core-plugin-index-reload { display: inline-flex; flex: none; align-items: center; justify-content: center; width: 28px; height: 28px; border: 1px solid var(--core-line); border-radius: 7px; background: var(--core-surface); color: var(--core-muted); cursor: pointer; transition: border-color 200ms ease, background-color 200ms ease, color 200ms ease; }
+.core-plugin-index-reload:hover:not(:disabled) { border-color: var(--core-accent); color: var(--core-accent); }
+.core-plugin-index-reload:disabled { opacity: .5; cursor: default; }
+.core-plugin-index-reload.is-update { border-color: var(--core-accent); background: var(--core-selected); color: var(--core-accent); }
+@media (prefers-reduced-motion: reduce) { .core-plugin-index-reload { transition: none; } }
+
+.core-plugin-guide { margin-top: 8px; color: var(--core-text); font-size: 13px; line-height: 1.6; }
+.core-plugin-guide h2, .core-plugin-guide h3 { margin: 14px 0 4px; color: var(--core-ink); font-size: 13px; letter-spacing: .02em; }
+.core-plugin-guide ul { margin: 6px 0; padding-left: 18px; }
+.core-plugin-guide li { margin: 3px 0; }
+.core-plugin-guide code { font-size: 12px; }
+.core-plugin-guide-link { color: var(--core-accent); text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
+
+.core-plugin-detail-head { display: grid; gap: 6px; }
+.core-plugin-detail-actions { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
+.core-plugin-detail.is-empty { color: var(--core-text); }
+.core-matrix-search { box-sizing: border-box; width: 220px; margin: 0; border: 1px solid var(--core-line); border-radius: 8px; padding: 8px 11px; background: var(--core-surface); color: var(--core-ink); font: inherit; }
+.core-matrix-expanded-back { border: 0; background: transparent; padding: 0; margin-bottom: 10px; color: var(--core-muted); font-size: 12px; cursor: pointer; }
+.core-matrix-expanded-back:hover { color: var(--core-accent); }
+.core-matrix-expanded h3 { margin: 4px 0 2px; }
+.core-matrix-expanded small { color: var(--core-faint); font-size: 11px; }
+.core-matrix-expanded p { margin: 10px 0 0; color: var(--core-text); font-size: 13px; line-height: 1.6; }
+.core-matrix-active h3 { margin: 5px 0 8px; color: var(--core-ink); font-size: 20px; letter-spacing: -.03em; }
+.core-matrix-registration { display: grid; gap: 4px; border-top: 1px solid var(--core-line-subtle); padding: 12px 0; }
+.core-matrix-registration strong { color: var(--core-ink); font-size: 12px; }
+.core-matrix-registration small { color: var(--core-faint); font-size: 10px; }
+/* One part per idea, separated by space and a hairline — not four little
+   boxes stacked inside the column. Same rhythm as the Work Packs detail. */
+.core-matrix-detail-part { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--core-line-subtle); }
+/* Direct child only: the guide markdown below can contain its own <strong>
+   runs, and those must stay inline, not turn into uppercase section labels. */
+.core-matrix-detail-part > strong { display: block; color: var(--core-ink); font-size: 11px; letter-spacing: .06em; text-transform: uppercase; }
+.core-matrix-detail-part p { margin: 6px 0 0; color: var(--core-muted); font-size: 13px; line-height: 1.6; }
+.core-plugin-adds-list { display: grid; gap: 8px; margin: 8px 0 0; padding: 0; list-style: none; }
+.core-plugin-adds-list li { display: flex; align-items: flex-start; gap: 8px; color: var(--core-text); font-size: 13px; }
+.core-plugin-adds-list li > svg { flex: none; margin-top: 2px; color: var(--core-faint); }
+.core-plugin-adds-list li > span { display: grid; gap: 1px; min-width: 0; }
+.core-plugin-adds-list li small { color: var(--core-muted); font-size: 12px; }
+.core-plugin-adds-more { margin: 6px 0 0; color: var(--core-faint); font-size: 12px; }
+.core-plugin-signature .core-plugin-state { display: inline-flex; align-items: center; gap: 4px; vertical-align: middle; margin-right: 4px; }
+.core-matrix-expanded.is-empty h3 { color: var(--core-muted); }
+
+.core-plugin-detail > h3, .core-plugin-detail-head h3 { margin: 2px 0; color: var(--core-ink); font-size: 19px; letter-spacing: -.02em; }
+.core-plugin-detail-head small { color: var(--core-faint); font-size: 11px; }
+.core-plugin-detail > p { margin: 12px 0 0; color: var(--core-text); font-size: 13px; line-height: 1.6; }
+
+.core-matrix-hint { margin: 6px 0 14px; color: var(--core-muted); font-size: 11.5px; line-height: 1.5; }
+.core-settings-shell { display: grid; grid-template-columns: 248px minmax(0, 1fr); gap: 16px; width: 100%; min-height: calc(100dvh - 126px); margin: 0; }
+.core-settings-nav { display: flex; align-self: start; flex-direction: column; gap: 5px; border: 1px solid var(--core-line); border-radius: 12px; padding: 20px 12px; background: var(--core-surface); position: sticky; top: 16px; }
+.core-settings-nav .core-eyebrow { padding: 0 10px 10px; }
+.core-settings-nav button { display: grid; grid-template-columns: 25px minmax(0, 1fr); align-items: center; gap: 8px; border: 0; border-radius: 8px; padding: 12px 10px; background: transparent; color: var(--core-muted); text-align: left; cursor: pointer; }
+.core-settings-nav button:hover, .core-settings-nav button.is-active { background: var(--core-selected); color: var(--core-ink); }
+.core-settings-nav button > span:first-child { color: var(--core-accent); font-size: 15px; text-align: center; }
+.core-settings-nav strong, .core-settings-nav small { display: block; }
+.core-settings-nav strong { font-size: 13px; }
+.core-settings-nav small { margin-top: 3px; color: var(--core-faint); font-size: 11px; }
+.core-settings-detail { min-width: 0; }
+.core-settings-section { min-height: 100%; border: 1px solid var(--core-line); border-radius: 12px; padding: clamp(24px, 4vw, 54px); background: var(--core-surface); box-shadow: 0 10px 30px rgba(55, 48, 39, 0.05); }
+.core-settings-section-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; max-inline-size: min(100%, var(--core-measure)); padding-bottom: 24px; border-bottom: 1px solid var(--core-line-subtle); }
+.core-settings-section-heading h2 { margin: 5px 0 10px; color: var(--core-ink); font-size: clamp(22px, 2vw, 30px); letter-spacing: -.03em; text-wrap: balance; }
+.core-settings-section-heading p:not(.core-eyebrow) { max-width: 62ch; margin: 0; color: var(--core-muted); font-size: 14px; line-height: 1.6; }
+.core-settings-mark { display: grid; place-items: center; flex: 0 0 auto; width: 40px; height: 40px; border-radius: 10px; background: var(--core-selected); color: var(--core-accent); font-size: 18px; }
+.core-settings-section .core-setting-row { max-inline-size: min(100%, var(--core-measure)); }
+.core-settings-note { max-inline-size: min(100%, var(--core-measure)); margin-top: 28px; border-left: 3px solid var(--core-accent); padding: 12px 16px; background: var(--core-selected-soft); }
+.core-settings-note strong { color: var(--core-accent-hover); font-size: 13px; }
+.core-settings-note p, .core-settings-action p { margin: 5px 0 0; color: var(--core-muted); font-size: 13px; line-height: 1.55; }
+.core-settings-action { display: flex; max-inline-size: min(100%, var(--core-measure)); align-items: center; justify-content: space-between; gap: 24px; border-bottom: 1px solid var(--core-line-subtle); padding: 16px 0; }
+/* `white-space: nowrap` and `flex: none` are the whole fix for the Updates
+   section jumping when an update is found. A second button appearing beside
+   the first made the row overflow, flex shrank both (the default
+   `flex-shrink: 1`), their labels wrapped onto two lines and `min-block-size`
+   let them grow from 36px to ~52px. The buttons did not "get bigger" — they
+   got narrower, and the text pushed them taller. */
+/* ponytail: one burgundy button style. The neutral/white variant was the
+   "washed out, doesn't look clickable" half of the report — Core has one
+   accent, buttons wear it. Danger keeps its own colour below. */
+.core-button { display: inline-flex; flex: none; align-items: center; justify-content: center; gap: 7px; min-block-size: 36px; border: 1px solid var(--core-accent); border-radius: 7px; padding: 8px 16px; background: var(--core-accent); color: var(--core-on-accent); font-weight: 600; cursor: pointer; white-space: nowrap; }
+.core-button:hover:not(:disabled) { border-color: var(--core-accent-hover); background: var(--core-accent-hover); }
+/* Same geometry as a neutral button, different colour. A pill next to a
+   rounded rectangle is the "inconsistency" half of the report: two controls
+   doing the same kind of thing, one beside the other, drawn as different
+   shapes. Emphasis is the fill and the weight, not the silhouette. */
+.core-button-primary { border-color: var(--core-accent); padding-inline: 16px; background: var(--core-accent); color: var(--core-on-accent); font-weight: 600; }
+.core-button-primary:hover:not(:disabled) { border-color: var(--core-accent-hover); background: var(--core-accent-hover); }
+/* The safe choice next to a primary one: outlined, so Cancel and Install no
+   longer look the same (CE63, CS61). */
+.core-button-secondary { background: transparent; color: var(--core-accent); }
+.core-button-secondary:hover:not(:disabled) { background: var(--core-hover); color: var(--core-accent); }
+.core-plugin-index-name:has(> .core-plugin-index-desc) { display: grid; }
+.core-plugin-index-desc { display: block; overflow: hidden; color: var(--core-faint); font-size: 11px; font-weight: 400; text-overflow: ellipsis; white-space: nowrap; }
+/* The Check-for-updates row otherwise stops at the shared --core-measure
+   line width like a text row, leaving the button well short of the section's
+   actual right edge (where the heading icon sits). This one row is a
+   control, not prose — let it use the full section width. */
+.core-settings-action-wide { max-inline-size: none; }
+.core-update-actions { margin-left: auto; justify-content: flex-end; }
+/* One button, status swaps in place (check → install): colour/border morph
+   only, so the row's width never jumps the "Launch at startup" row below. */
+.core-update-button { min-width: 172px; justify-content: center; }
+.core-update-chip { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border: 1px solid var(--core-success, #4f9b6e); border-radius: 999px; color: var(--core-success, #4f9b6e); font-size: 13px; animation: core-view-in 160ms ease-out; }
+.core-plugin-index-note { margin: 0 0 8px; color: var(--core-muted); font-size: 12px; line-height: 1.45; }
+@media (prefers-reduced-motion: no-preference) {
+  .core-update-button { transition: background-color 260ms ease, border-color 260ms ease, color 260ms ease; }
+}
+.core-settings-action strong { color: var(--core-ink); font-size: 14px; }
+.core-trash-list { max-inline-size: min(100%, var(--core-measure)); margin-top: 28px; }
+.core-trash-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding-bottom: 12px; border-bottom: 1px solid var(--core-border-subtle); }
+.core-trash-heading strong { color: var(--core-text); font-size: 14px; }
+.core-trash-heading p { margin: 5px 0 0; color: var(--core-muted); font-size: 12px; }
+.core-trash-heading > span { min-width: 24px; padding: 2px 7px; border-radius: 999px; background: var(--core-selected); color: var(--core-accent); font-size: 11px; text-align: center; }
+.core-trash-empty { color: var(--core-faint); font-size: 12px; }
+.core-trash-rows { display: grid; gap: 0; }
+.core-trash-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 12px 0; border-bottom: 1px solid var(--core-border-subtle); }
+.core-trash-row > div { display: grid; gap: 3px; min-width: 0; }
+.core-trash-row strong { overflow: hidden; color: var(--core-text); font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
+.core-trash-row small { color: var(--core-faint); font-size: 11px; }
+.core-backup-list { max-inline-size: min(100%, var(--core-measure)); margin-top: 28px; }
+.core-backup-list code { padding: 1px 5px; border-radius: 4px; background: var(--core-hover); font-size: 11px; }
+.core-backup-open-folder { margin: 12px 0; }
+.core-backup-row-actions { display: flex; flex: 0 0 auto; gap: 8px; }
+.core-button-danger { border-color: var(--core-danger); background: var(--core-surface); color: var(--core-danger); font-weight: 400; }
+.core-button-danger:hover { background: var(--core-danger); color: var(--core-on-accent); }
+.is-spinning { animation: core-spin 0.8s linear infinite; }
+@keyframes core-spin { to { transform: rotate(360deg); } }
+.core-restore-confirm { max-inline-size: min(100%, var(--core-measure)); margin-top: 16px; border: 1px solid var(--core-danger); border-radius: 8px; padding: 14px 16px; background: var(--core-bg); }
+.core-restore-confirm p { margin: 0; color: var(--core-text); font-size: 13px; line-height: 1.5; }
+.core-restore-confirm-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }
+
+/* COLLECTION vocabulary. Six classes, no JS: a collection is a status bar the
+   user reads plus a <details> holding the N rows they usually do not need to
+   see. This is what keeps Recovery the same height at 2 backups and at 200. */
+.core-collection { display: grid; gap: 6px; margin-top: 22px; max-inline-size: min(100%, var(--core-measure)); }
+.core-collection-summary { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px 16px; padding-bottom: 8px; border-bottom: 1px solid var(--core-line-subtle); }
+.core-collection-summary > div { flex: 1 1 280px; min-width: 0; }
+.core-collection-summary strong { color: var(--core-ink); font-size: 14px; }
+.core-collection-summary p { margin: 3px 0 0; color: var(--core-muted); font-size: 12px; line-height: 1.5; }
+.core-collection-disclosure > summary { padding: 6px 0; color: var(--core-accent); font-size: 12px; cursor: pointer; list-style-position: inside; }
+.core-collection-disclosure > summary:hover { color: var(--core-accent-hover); }
+.core-collection-row { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: var(--core-row-padding) 0; border-bottom: 1px solid var(--core-line-subtle); }
+.core-collection-row > div { display: flex; min-width: 0; align-items: baseline; gap: 10px; }
+.core-collection-row strong { overflow: hidden; color: var(--core-text); font-size: 13px; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
+.core-collection-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(var(--core-collection-min), 1fr)); gap: 2px 24px; }
+/* Metadata is there when you look for it and silent when you don't. Desktop
+   app, so :hover carries it — :focus-within is what keeps it reachable from
+   the keyboard. */
+.core-collection-meta { color: var(--core-faint); font-size: 11px; opacity: .55; transition: opacity 140ms ease; white-space: nowrap; }
+.core-collection-row:hover .core-collection-meta, .core-collection-row:focus-within .core-collection-meta { opacity: 1; }
+
+/* Density is a preference, not a resolution: it sets how tight a collection is
+   packed. Before 0.54.0 this control wrote to localStorage and matched four
+   rules, none of them on a settings screen — it looked like it worked. */
+.core-comfortable { --core-collection-min: 300px; --core-row-padding: 10px; }
+.core-compact { --core-collection-min: 240px; --core-row-padding: 6px; }
+.core-compact .core-notes-layout { min-height: 510px; }
+.core-compact .core-editor-textarea { min-height: 320px; }
+.core-compact .core-object-row { padding-top: 8px; padding-bottom: 8px; }
+.core-compact .core-card { padding: 18px; }
+/* Night redefines the PUBLIC tokens only. The private --core-* aliases follow
+   automatically, so a theme overriding --notible-* wins in night too. */
+/* Midnight palette is defined in midnight-theme.css. */
+/* Everything the old night block restated here — sidebar, cards, settings,
+   the plugin matrix — is already set by the base rule with the same token, so
+   it was pure redundancy at specificity 0-2-0 that beat any theme written
+   against :root. Only genuine night-specific choices remain below. */
+.core-night .core-object-row:hover { background: var(--core-selected); }
+.core-night .core-settings-note strong { color: var(--core-text); }
+
+@media (max-width: 850px) {
+  .core-shell { grid-template-columns: 180px minmax(0, 1fr); }
+  .core-main { padding: 22px 18px 30px; }
+  .core-notes-layout { grid-template-columns: 220px minmax(0, 1fr); height: max(590px, calc(100dvh - 112px)); }
+  .core-editor-panel { padding: 18px; }
+  .core-settings-shell, .core-settings-shell.has-plugins-detail { grid-template-columns: 190px minmax(0, 1fr); }
+  .core-settings-section { padding: 24px; }
+  .core-settings-action { align-items: flex-start; flex-direction: column; }
+}
+
+/* Not enough room for two measure-wide columns: the detail pane drops below
+   the list, full width, and stops being sticky. */
+@media (max-width: 1200px) {
+  .core-settings-shell.has-plugins-detail { grid-template-columns: 220px minmax(0, 1fr); }
+  .core-plugins-detail-pane { grid-column: 1 / -1; position: static; max-height: none; margin-top: 24px; padding-left: 0; padding-top: 20px; border-left: 0; border-top: 1px solid var(--core-line-subtle); }
+}
+
+@media (max-width: 680px) {
+  body { min-width: 0; }
+  .core-shell { display: block; block-size: auto; min-height: 100dvh; overflow: visible; }
+  .core-sidebar { min-height: auto; padding: 14px; }
+  .core-sidebar-footer { display: none; }
+  .core-main { min-height: calc(100dvh - 170px); padding: 20px 14px 24px; overflow: visible; }
+  .core-topbar { align-items: flex-start; flex-direction: column; }
+  .core-notes-layout { grid-template-columns: 1fr; height: auto; min-height: 0; }
+  .core-list-panel { max-height: 260px; overflow: auto; border-right: 0; border-bottom: 1px solid var(--core-line-subtle); }
+  .core-editor-panel { min-height: 620px; }
+  .core-card-grid { grid-template-columns: 1fr; min-height: 0; }
+  .core-matrix-category-grid { grid-template-columns: 1fr; }
+  .core-settings-shell { grid-template-columns: 1fr; min-height: 0; }
+  .core-settings-nav { align-self: auto; position: static; }
+  .core-settings-nav button { grid-template-columns: 25px minmax(0, 1fr); }
+}
+.core-fatal-error { display: grid; align-content: start; gap: 12px; min-height: 100dvh; padding: clamp(24px, 6vw, 72px); background: var(--core-bg); color: var(--core-ink); }
+.core-fatal-error h1 { max-width: 28ch; margin: 0; font-size: clamp(28px, 4vw, 48px); letter-spacing: -.04em; }
+.core-fatal-error p:not(.core-eyebrow) { max-width: 65ch; color: var(--core-muted); line-height: 1.6; }
+.core-fatal-error button { width: fit-content; border: 0; border-radius: 8px; padding: 10px 14px; background: var(--core-accent); color: var(--core-on-accent); cursor: pointer; }
+.core-matrix-plugin-info { display: block; min-width: 0; padding: 0; border: 0; background: transparent; color: inherit; text-align: left; cursor: default; font: inherit; }
+.core-matrix-plugin-info strong, .core-matrix-plugin-info small, .core-matrix-plugin-info p, .core-matrix-plugin-info em { display: block; }
+.core-matrix-plugin-info small { margin-top: 3px; color: var(--core-muted); font-size: 11px; }
+.core-matrix-plugin-info p { margin: 7px 0 4px; color: var(--core-muted); font-size: 12px; line-height: 1.45; }
+.core-matrix-plugin-info em { color: var(--core-accent); font-size: 11px; font-style: normal; font-weight: 700; }
+.core-matrix-plugin:not(.is-live) .core-matrix-plugin-info em { color: var(--core-muted); font-weight: 500; }
+.core-command-input { min-width: 260px; border: 1px solid var(--core-line); border-radius: 7px; padding: 8px 10px; font: inherit; }
+.core-command-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 12px 0; border-top: 1px solid var(--core-line-subtle); }
+.core-command-row strong, .core-command-row small { display: block; }.core-command-row small { margin-top: 4px; color: var(--core-muted); font-size: 11px; }
+.core-plugin-settings { min-width: 0; }.core-plugin-settings-layout { display: grid; grid-template-columns: minmax(210px, .3fr) minmax(0, 1fr); gap: 16px; margin-top: 20px; }.core-plugin-settings-nav, .core-plugin-settings-content { border: 1px solid var(--core-line); border-radius: 14px; background: var(--core-surface); }.core-plugin-settings-nav { padding: 10px; }.core-plugin-settings-nav button { display: block; width: 100%; border: 0; border-radius: 8px; background: transparent; padding: 12px; color: var(--core-ink); text-align: left; cursor: pointer; font: inherit; }.core-plugin-settings-nav button.is-active, .core-plugin-settings-nav button:hover { background: var(--core-selected); }.core-plugin-settings-nav strong, .core-plugin-settings-nav small { display: block; }.core-plugin-settings-nav small { margin-top: 4px; color: var(--core-muted); font-size: 11px; }.core-plugin-settings-content { min-width: 0; padding: 18px; }
+.core-plugin-settings .core-plugin-settings-nav, .core-plugin-settings .core-plugin-settings-content { border-color: var(--core-border-subtle); border-radius: 10px; background: transparent; }
+.core-plugin-settings .core-plugin-settings-content { padding: 22px; }
+.core-plugin-settings .settings-section { border: 0; border-radius: 0; padding: 0; background: transparent; box-shadow: none; }
+.core-plugin-settings .settings-section input:not([type="checkbox"]), .core-plugin-settings .settings-section select, .core-plugin-settings .settings-section textarea { min-block-size: 36px; border: 1px solid var(--core-border); border-radius: 7px; background: var(--core-background); color: var(--core-text); }
+.core-plugin-settings .settings-section button:not(.core-back-button) { min-block-size: 36px; border: 1px solid var(--core-border); border-radius: 7px; background: var(--core-surface); color: var(--core-text); }
+.core-settings-divider { height: 1px; margin: 18px 8px 14px; background: var(--core-line); }
+.core-settings-heading-actions { display: flex; flex: none; align-items: center; gap: 12px; }.core-back-button { border: 1px solid var(--core-line); border-radius: 7px; background: var(--core-surface); color: var(--core-ink); padding: 8px 11px; cursor: pointer; font: inherit; }.core-plugin-empty { display: grid; gap: 6px; padding: 16px 10px; color: var(--core-muted); }.core-plugin-empty strong { color: var(--core-ink); }.core-plugin-error { margin-top: 14px; white-space: pre-wrap; color: #a23c3c; font: 12px/1.5 ui-monospace, SFMono-Regular, Consolas, monospace; }.core-command-palette { position: fixed; z-index: 20; inset: 0; display: grid; place-items: start center; padding: 12vh 20px 20px; background: rgb(37 31 24 / 32%); }.core-command-palette-card { width: min(720px, 100%); max-height: 72vh; overflow: auto; padding: 22px; border: 1px solid var(--core-line); border-radius: 16px; background: var(--core-surface); box-shadow: 0 18px 70px rgb(37 31 24 / 22%); }.core-command-palette-card .core-command-input { width: 100%; box-sizing: border-box; margin: 12px 0 8px; }
+@media (max-width: 800px) { .core-plugin-settings-layout { grid-template-columns: 1fr; } }
+.core-editor-body-wrap { position: relative; display: flex; min-width: 0; min-height: 0; flex: 1; }
+.core-editor-content-wrap { display: contents; }
+.core-selection-toolbar { position: absolute; z-index: 6; display: flex; gap: 2px; padding: 4px; border: 1px solid var(--core-line); border-radius: 9px; background: var(--core-surface); box-shadow: 0 10px 30px rgb(37 31 24 / 20%); }
+.core-selection-toolbar-btn { display: inline-grid; place-items: center; width: 28px; height: 28px; border: 0; border-radius: 6px; background: transparent; color: var(--core-text); cursor: pointer; font-size: 13px; font-weight: 700; }
+.core-selection-toolbar-btn:hover { background: var(--core-hover); }
+.core-selection-toolbar-italic { font-style: italic; }
+.core-selection-toolbar-underline { text-decoration: underline; }
+.core-selection-toolbar-strike { text-decoration: line-through; }
+/* A yellow underline says "yellow highlight"; the old tint read as a pressed button (E17). */
+.core-selection-toolbar-highlight { box-shadow: inset 0 -3px 0 var(--core-hl-yellow); }
+
+/* ------------------------------------------------------------ highlighting
+ *
+ * There was no rule for <mark> at all, so highlighting used the browser's own
+ * yellow — the one colour no designer picked. These six are muted enough to
+ * write on and still tell apart, and each is a wash of one hue rather than a
+ * saturated block: a highlighter marks a line, it does not replace it.
+ *
+ * Both themes are stated. On paper the pens are pale washes; in Midnight the
+ * same pale wash would glow, so they become low-opacity tints of the same
+ * hues with the text left alone. Never a fixed text colour on top of a
+ * variable background. */
+:root {
+  --core-hl-yellow: #f6e6a8;
+  --core-hl-green: #cfe4c4;
+  --core-hl-blue: #cadcec;
+  --core-hl-pink: #f2d4dc;
+  --core-hl-purple: #ddd3ea;
+  --core-hl-orange: #f7ddc3;
+}
+.core-night {
+  --core-hl-yellow: rgba(214, 184, 92, 0.28);
+  --core-hl-green: rgba(140, 178, 129, 0.26);
+  --core-hl-blue: rgba(122, 163, 196, 0.28);
+  --core-hl-pink: rgba(206, 137, 156, 0.26);
+  --core-hl-purple: rgba(166, 145, 200, 0.26);
+  --core-hl-orange: rgba(210, 150, 92, 0.26);
+}
+.core-md-highlight {
+  padding: 0 2px;
+  border-radius: 3px;
+  /* `inherit`, not a literal: the pens are backgrounds, and the note's own
+     text colour has to keep working over every one of them in both themes. */
+  color: inherit;
+  background: var(--core-hl-yellow);
+}
+.core-md-highlight[data-highlight="green"] { background: var(--core-hl-green); }
+.core-md-highlight[data-highlight="blue"] { background: var(--core-hl-blue); }
+.core-md-highlight[data-highlight="pink"] { background: var(--core-hl-pink); }
+.core-md-highlight[data-highlight="purple"] { background: var(--core-hl-purple); }
+.core-md-highlight[data-highlight="orange"] { background: var(--core-hl-orange); }
+
+/* The pens in the selection toolbar. Round, unlabelled, and the colour is the
+   label — a row of swatches reads faster than six words would. */
+.core-selection-toolbar-pens { display: flex; gap: 4px; align-items: center; padding-left: 4px; margin-left: 2px; border-left: 1px solid var(--core-line); }
+.core-selection-toolbar-pen {
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: 1px solid var(--core-line);
+  border-radius: 50%;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.core-selection-toolbar-pen:hover { border-color: var(--core-accent); transform: scale(1.12); }
+
+.core-container-slot { flex: 1; min-height: 0; overflow: auto; }
+/* Tab strip on a container object. Core draws it; which tabs exist comes from
+   plugin registrations (API 1.5), never from a map of plugin ids in Core. */
+.core-object-tabs { display: flex; flex: none; gap: 2px; margin-bottom: 12px; border-bottom: 1px solid var(--core-line-subtle); }
+.core-object-tabs button { border: 0; border-bottom: 2px solid transparent; padding: 8px 12px; background: transparent; color: var(--core-muted); font-size: 13px; cursor: pointer; }
+.core-object-tabs button:hover { color: var(--core-text); }
+.core-object-tabs button.is-active { border-bottom-color: var(--core-accent); color: var(--core-ink); font-weight: 600; }
+.core-object-tabs button:focus-visible { outline: 2px solid var(--core-accent); outline-offset: -2px; }
+.core-object-tabs-spacer { flex: 1; }
+/* A settings button, not another tab (S6). */
+.core-object-tabs-modules { display: inline-flex; align-items: center; gap: 5px; align-self: center; border: 1px solid var(--core-line); border-radius: 999px; padding: 4px 10px; background: transparent; color: var(--core-muted); font-size: 12px; cursor: pointer; }
+.core-object-tabs-modules:hover { color: var(--core-text); }
+/* A container surface (project board, timeline…) manages its own scrolling, so
+   the panel hosting it must be exactly the height that is left, not at least a
+   screenful like a note. Without this the whole chain grows to content and the
+   board's own overflow never engages — that is why the Kanban could not be
+   scrolled. Notes keep the min-height; only container surfaces opt out. */
+.core-editor-only:has(.core-container-slot) { flex: 1 1 auto; min-height: 0; align-items: stretch; }
+.core-editor-only .core-editor-panel:has(> .core-container-slot) { min-height: 0; }
+.core-container-slot-empty { display: grid; place-items: center; flex: 1; min-height: 200px; padding: 20px; border: 1px dashed var(--core-line); border-radius: 12px; color: var(--core-muted); text-align: center; }
+.core-slash-menu { position: absolute; z-index: 5; left: 16px; right: 16px; bottom: 12px; max-height: 288px; overflow: auto; scroll-padding: 6px; border: 1px solid var(--core-line); border-radius: 10px; padding: 6px; background: var(--core-surface); box-shadow: 0 14px 40px rgb(37 31 24 / 18%); }
+.core-slash-row { display: block; width: 100%; border: 0; border-top: 0; border-radius: 7px; background: transparent; padding: 7px 10px; cursor: pointer; font: inherit; text-align: left; }
+/* One line per command (V-SURFACES-01): the name, then a grey hint cut short. */
+.core-slash-row > div { display: flex; align-items: baseline; gap: 8px; min-width: 0; line-height: 1.45; }
+.core-slash-row strong { flex: none; font-size: 13px; font-weight: 600; }
+.core-slash-row small { min-width: 0; overflow: hidden; color: var(--core-muted); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+/* The keyboard choice is the selected one; hover is lighter, so two rows never look picked. */
+.core-slash-row.is-active { background: var(--core-selected); }
+.core-slash-row:hover:not(.is-active) { background: transparent; box-shadow: inset 0 0 0 1px var(--core-line); }
+
+/* Shared workspace navigation: the note tree belongs to the Core sidebar. */
+/* This section is the only part of the sidebar that scrolls — the brand,
+   create/search actions and nav above stay put, and Settings below stays
+   pinned via .core-sidebar-spacer (see CoreOnlyApp.tsx, which renders one or
+   the other, never both, so this flex:1 has no sibling to fight over the
+   remaining height). */
+.core-sidebar-notes { display: flex; flex: 1 1 auto; min-height: 0; flex-direction: column; gap: 10px; margin-top: -6px; border-top: 1px solid var(--core-border-subtle); padding-top: 12px; }
+.core-sidebar-notes .core-search { display: grid; grid-template-columns: minmax(0, 1fr) 34px; gap: 6px; }
+.core-sidebar-notes .core-search input { width: 100%; min-width: 0; box-sizing: border-box; }
+.core-sidebar-notes .core-search button { min-width: 0; padding: 7px; }
+.core-sidebar-notes .core-list-heading { flex: 0 0 auto; padding: 0 4px; }
+.core-sidebar-notes .core-object-list { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding-right: 2px; }
+.core-sidebar-notes .core-object-row { padding: 10px 10px; }
+/* `flex: 1` + `min-height: 0` let this row shrink to the leftover space in
+   .core-main while the editor panel inside it overflowed far past that —
+   777px of container holding 2570px of note. A sticky child can only stick
+   inside its containing block, so Properties came unstuck partway down a
+   long note. `flex: 1 0 auto` makes the row as tall as the note it holds. */
+.core-editor-only { display: flex; min-width: 0; flex: 1 0 auto; width: 100%; gap: 16px; align-items: flex-start; }
+.core-editor-only .core-editor-panel { flex: 1; min-width: 0; min-height: calc(100dvh - 126px); border: 1px solid var(--core-line); border-radius: 14px; background: var(--core-surface); box-shadow: 0 10px 30px rgba(55, 48, 39, 0.05); }
+/* 3.3: Properties must stay usable while a long note scrolls past it —
+   sticky to .core-main (the nearest scrolling ancestor, overflow:auto)
+   instead of scrolling away with the editor column beside it. */
+.core-properties-aside { flex: 0 0 280px; position: sticky; top: 0; align-self: flex-start; max-height: calc(100dvh - 126px); overflow: auto; border: 0; border-left: 1px solid var(--core-line); border-radius: 0; padding: 4px 16px 16px 20px; background: transparent; box-shadow: none; }
+@media (max-width: 1000px) { .core-editor-only { flex-direction: column; } .core-properties-aside { flex-basis: auto; width: 100%; min-height: 0; } }
+/* flex-shrink:0 stops core-main (a column flexbox) from squeezing these
+   grid layouts below their content height, which broke position:sticky for
+   their nav columns (e.g. .core-settings-nav) — the grid row's real height
+   must match content for sticky's containing block to compute correctly. */
+.core-card-grid, .core-settings-shell, .core-plugin-settings-layout
+.core-card, .core-card-wide, .core-command-row, .core-command-row > div, .core-card-heading { min-width: 0; }
+.core-card { overflow: hidden; }
+.core-command-row > div { overflow: hidden; }
+.core-command-row strong, .core-command-row small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.core-command-input { width: min(320px, 100%); min-width: 0; max-width: 100%; box-sizing: border-box; background: var(--core-surface); color: var(--core-ink); }
+.core-card-heading > .core-command-input { flex: 0 1 320px; }
+.core-back-button, .core-settings-launcher, .core-secondary-action, .core-settings-nav button, .core-plugin-settings-nav button, .core-matrix-plugin-info { transition: background-color 180ms ease, border-color 180ms ease, color 180ms ease, transform 120ms ease; }
+.core-back-button:hover, .core-settings-launcher:hover, .core-secondary-action:hover { border-color: var(--core-accent); }
+.core-back-button:active, .core-settings-launcher:active, .core-secondary-action:active, .core-command-row button:active { transform: translateY(1px) scale(.99); }
+.core-back-button:focus-visible, .core-settings-launcher:focus-visible, .core-secondary-action:focus-visible, .core-command-input:focus-visible, .core-matrix-plugin input:focus-visible, .core-matrix-plugin-info:focus-visible { outline: 3px solid rgba(141, 59, 70, 0.4); outline-offset: 2px; }
+/* Idle state must look the same in both themes: light leaves these buttons flat,
+   so night must too — a night-only fill turned every nav item into an island. */
+.core-night .core-back-button, .core-night .core-settings-launcher, .core-night .core-secondary-action, .core-night .core-settings-nav button, .core-night .core-plugin-settings-nav button
+.core-night .core-back-button { border-color: var(--core-line); } /* the back button is a framed button in light too */
+.core-night .core-back-button:hover, .core-night .core-settings-launcher:hover, .core-night .core-secondary-action:hover, .core-night .core-settings-nav button:hover, .core-night .core-settings-nav button.is-active, .core-night .core-plugin-settings-nav button:hover, .core-night .core-plugin-settings-nav button.is-active { border-color: var(--core-accent); background: var(--core-active); color: var(--core-ink); }
+.core-night .core-command-input, .core-night .core-search input, .core-night .core-search button, .core-night .core-setting-row select { border-color: var(--core-line); background: var(--core-hover); color: var(--core-ink); }
+@media (max-width: 680px) {
+  .core-sidebar-notes { max-height: 42dvh; }
+  .core-sidebar-notes .core-object-list { max-height: none; }
+  .core-editor-only .core-editor-panel { min-height: 620px; }
+  .core-card-heading { flex-wrap: wrap; }
+  .core-card-heading > .core-command-input { flex-basis: 100%; }
+}
+
+/* Obsidian-inspired workspace chrome: quiet surfaces, one sidebar, linear icons. */
+body { min-width: 0; }
+.core-shell {
+  grid-template-columns: 272px minmax(0, 1fr);
+  background: var(--notible-app-backdrop, var(--core-bg));
+  color: var(--core-ink);
+}
+.core-sidebar {
+  gap: 14px;
+  padding: 22px 12px 14px;
+  border-right: 1px solid var(--core-line-subtle);
+  background: var(--notible-sidebar-background, var(--core-bg));
+  -webkit-backdrop-filter: var(--notible-sidebar-filter, none);
+  backdrop-filter: var(--notible-sidebar-filter, none);
+}
+.core-brand { padding: 0 10px; }
+.core-brand-text { font-size: 23px; }
+.core-sidebar-actions { flex-wrap: nowrap; gap: 6px; padding: 0 4px; }
+.core-new-button:active, .core-create-button:active, .core-icon-action:active { transform: translateY(1px); }
+.core-create-wrap { position: relative; flex: 0 0 auto; }
+/* Two classes, not one: `.core-create-menu` (below) sets its own z-index for
+   the dropdown case and is declared later in this file, so a single-class
+   `.core-row-context-menu { z-index: 40 }` here loses the cascade to it
+   regardless of which number is bigger — same specificity, later rule wins.
+   The combined selector outranks it and actually applies. This was the
+   right-click tree menu getting drawn under plugin panel content (Kanban
+   etc.) at 0.82.x. */
+.core-create-menu.core-row-context-menu { z-index: 60; max-width: min(260px, calc(100vw - 24px)); max-height: calc(100vh - 16px); overflow-y: auto; }
+.core-row-context-menu p { margin: 0; color: var(--core-text); font-size: 12px; line-height: 1.5; padding: 4px 6px; }
+.core-menu-item-danger { color: var(--core-danger) !important; }
+.core-row-delete-actions { display: flex; justify-content: flex-end; gap: 6px; margin-top: 4px; }
+.core-row-delete-actions button { width: auto; border: 1px solid var(--core-border); border-radius: 6px; padding: 6px 10px; background: var(--core-raised); font-size: 12px; }
+.core-row-delete-actions .core-button-danger { border-color: var(--core-danger); background: var(--core-danger); color: var(--core-on-accent); }
+.core-move-wrap { position: relative; }
+.core-move-menu { top: calc(100% + 6px); right: 0; left: auto; max-height: 260px; overflow: auto; }
+.core-create-button, .core-icon-action {
+  display: inline-grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border: 1px solid var(--core-line);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--core-muted);
+  cursor: pointer;
+}
+.core-create-button:hover, .core-icon-action:hover { background: var(--core-hover); color: var(--core-ink); }
+.core-create-menu {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + 6px);
+  left: 0;
+  right: auto;
+  display: grid;
+  /* Without an explicit column, a grid's single implicit column sizes to
+     max-content — it grows to fit the widest button's text instead of
+     wrapping it, which is what let "Set as favourite (opens on launch)"
+     spill past the menu's own max-width. Same fix as `.properties-editor`. */
+  grid-template-columns: minmax(0, 1fr);
+  min-width: min(220px, calc(100vw - 24px));
+  max-width: calc(100vw - 24px);
+  padding: 5px;
+  border: 1px solid var(--core-line);
+  border-radius: 9px;
+  background: var(--core-surface);
+  box-shadow: 0 14px 34px rgb(55 48 39 / 16%);
+}
+.core-create-menu button {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  border-radius: 6px;
+  padding: 8px 9px;
+  background: transparent;
+  color: var(--core-muted);
+  text-align: left;
+  cursor: pointer;
+}
+.core-create-menu button svg { flex-shrink: 0; }
+.core-create-menu button:hover { background: var(--core-hover); color: var(--core-ink); }
+/* One compact row per item (two-line items took too much room):
+   the name, then a short grey hint cut to one line; the full hint is the tooltip. */
+.core-create-menu-described { width: min(240px, calc(100vw - 24px)); min-width: 0; }
+.core-create-menu-described button { align-items: center; padding-block: 6px; }
+.core-create-menu-described button > span { display: flex; align-items: baseline; gap: 6px; min-width: 0; }
+.core-create-menu-described button strong { flex: none; font-weight: 500; color: var(--core-ink); }
+.core-create-menu-described button small { min-width: 0; overflow: hidden; color: var(--core-faint); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.core-table-context-menu { z-index: 40; display: grid; min-width: 180px; padding: 5px; border: 1px solid var(--core-line); border-radius: 9px; background: var(--core-surface); box-shadow: 0 14px 34px rgb(55 48 39 / 16%); }
+.core-table-context-menu button { display: block; width: 100%; border: 0; border-radius: 6px; padding: 8px 9px; background: transparent; color: var(--core-muted); text-align: left; cursor: pointer; font: inherit; }
+.core-table-context-menu button:hover, .core-table-context-menu button:focus-visible { background: var(--core-hover); color: var(--core-ink); }
+.core-table-context-menu-divider { height: 1px; margin: 4px 6px; background: var(--core-line-subtle); }
+.core-new-button { display: inline-grid; place-items: center; flex: 0 0 36px; width: 36px; height: 36px; min-block-size: 36px; padding: 0; border: 1px solid var(--core-border); border-radius: 9px; background: var(--core-raised); color: var(--core-muted); cursor: pointer; }
+.core-new-button:hover { background: var(--core-hover); color: var(--core-text); }
+.core-search-action { display: inline-grid; place-items: center; flex: 0 0 36px; width: 36px; height: 36px; min-block-size: 36px; padding: 0; border: 1px solid var(--core-border); border-radius: 9px; background: var(--core-raised); color: var(--core-muted); cursor: pointer; }
+.core-search-action:hover { background: var(--core-hover); color: var(--core-text); }
+/* Note-level chrome buttons carry the brand: filled bordo, not outline.
+   Deliberate exception to Core's outline-not-fill language, for these
+   controls only — Back, "+", search, and the editor icon actions. */
+.core-back-button, .core-new-button, .core-create-button, .core-icon-action, .core-search-action,
+.core-night .core-back-button {
+  border-color: var(--core-accent); background: var(--core-accent); color: var(--core-on-accent);
+}
+.core-back-button:hover, .core-new-button:hover, .core-create-button:hover, .core-icon-action:hover, .core-search-action:hover,
+.core-night .core-back-button:hover {
+  border-color: var(--core-accent-hover); background: var(--core-accent-hover); color: var(--core-on-accent);
+}
+.core-search-action.is-active {
+  border-color: var(--core-accent-hover); background: var(--core-accent-hover); color: var(--core-on-accent);
+  box-shadow: inset 0 0 0 2px var(--core-on-accent);
+}
+.core-search-action.is-active:focus-visible { box-shadow: none; }
+.core-editor-only .core-editor-panel, .core-editor-content { max-width: none; }
+.core-title-input { width: 100%; max-width: none; }
+.core-nav { gap: 2px; }
+.core-nav button { grid-template-columns: 20px minmax(0, 1fr) auto; padding: 8px 10px; }
+.core-nav button svg, .core-settings-launcher svg { color: var(--core-muted); }
+.core-sidebar-notes { gap: 8px; margin-top: 0; padding-top: 10px; }
+.core-sidebar-notes .core-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 4px;
+  border: 0;
+}
+.core-sidebar-notes .core-search svg { flex: 0 0 auto; color: var(--core-faint); }
+.core-sidebar-notes .core-search input {
+  width: 100%;
+  min-height: 32px;
+  border: 1px solid var(--core-line);
+  border-radius: 7px;
+  padding: 7px 9px;
+  background: transparent;
+}
+.core-sidebar-notes .core-list-heading { padding: 9px 8px 4px; }
+.core-sidebar-notes .core-object-list { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 0 2px; }
+.core-object-tree-row { min-height: 34px; }
+.core-tree-toggle { width: 22px; flex-basis: 22px; color: var(--core-faint); }
+.core-tree-toggle svg { transition: transform 140ms ease; }
+.core-tree-toggle svg.is-expanded { transform: rotate(90deg); }
+.core-object-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 32px;
+  border-left-width: 2px;
+  padding: 6px 8px;
+}
+.core-object-row-icon { display: inline-grid; place-items: center; flex: 0 0 auto; color: var(--core-faint); }
+.core-object-row strong { flex: 1 1 auto; min-width: 0; font-size: 13px; font-weight: 500; }
+.core-object-row-favourite { flex: 0 0 auto; margin-left: auto; color: var(--core-accent); fill: var(--core-accent); }
+.core-object-row small { display: none; }
+.core-sidebar-spacer { min-height: 26px; }
+.core-sidebar-footer { display: none; }
+.core-settings-launcher { margin-top: auto; padding: 9px 10px; }
+.core-main { padding: 26px clamp(24px, 4vw, 62px) 34px; }
+.core-topbar { margin-bottom: 24px; }
+.core-topbar h1 { font-size: 28px; font-weight: 720; }
+.core-top-actions { gap: 6px; }
+.core-back-button { display: inline-flex; align-items: center; gap: 7px; }
+.core-editor-only .core-editor-panel {
+  min-height: calc(100dvh - 132px);
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+.core-editor-toolbar { margin-bottom: 26px; }
+.core-editor-toolbar > div { display: flex; gap: 6px; }
+.core-title-input { width: 100%; padding: 4px 0; border-radius: 0; font-size: clamp(28px, 3vw, 40px); }
+.core-editor-meta { margin: 4px 0 18px; }
+.core-object-kind-banner { margin: 10px 0 10px; }
+.core-object-kind-banner span { border: 0; padding: 0; }
+.core-editor-body-wrap { width: 100%; }
+.core-editor-textarea { min-height: 420px; padding: 16px 0; font-size: 16px; line-height: 1.75; }
+.core-editor-stats {
+  display: flex;
+  gap: 16px;
+  width: 100%;
+  padding: 10px 0 0;
+  border-top: 1px solid var(--core-line-subtle);
+  color: var(--core-faint);
+  font-size: 11px;
+}
+.core-editor-created { margin-left: auto; }
+/* "Edited …" in the note footer: the entry to version history, as quiet as
+   the "Created …" beside it — a link only on hover. */
+.core-editor-edited { padding: 0; border: 0; background: none; color: inherit; font: inherit; cursor: pointer; }
+.core-editor-edited:hover { color: var(--core-text); text-decoration: underline; }
+.core-history-panel { position: fixed; top: 0; right: 0; bottom: 0; z-index: 35; display: flex; flex-direction: column; width: min(380px, 100vw); border-left: 1px solid var(--core-line); background: var(--core-surface); color: var(--core-text); }
+.core-history-head { display: flex; align-items: center; justify-content: space-between; padding: 14px 16px; border-bottom: 1px solid var(--core-line-subtle); }
+.core-history-head h2 { margin: 0; font-size: 14px; }
+.core-history-list { flex: 0 1 auto; max-height: 45%; overflow-y: auto; margin: 0; padding: 6px; list-style: none; }
+.core-history-list button { display: flex; width: 100%; justify-content: space-between; gap: 8px; padding: 7px 9px; border: 1px solid transparent; border-radius: 7px; background: none; color: var(--core-text); font: inherit; font-size: 12px; text-align: left; cursor: pointer; }
+.core-history-list button:hover { border-color: var(--core-line); }
+.core-history-list button.is-selected { border-color: var(--core-accent); }
+.core-history-source { color: var(--core-faint); }
+.core-history-preview { display: flex; flex: 1 1 auto; flex-direction: column; min-height: 0; border-top: 1px solid var(--core-line-subtle); }
+.core-history-preview pre { flex: 1 1 auto; overflow: auto; margin: 0; padding: 12px 16px; font: inherit; font-size: 12px; white-space: pre-wrap; word-break: break-word; }
+.core-history-actions, .core-history-foot { display: flex; gap: 8px; padding: 10px 16px; border-top: 1px solid var(--core-line-subtle); }
+.core-history-actions button, .core-history-foot button { padding: 5px 10px; border: 1px solid var(--core-line); border-radius: 7px; background: none; color: var(--core-text); font: inherit; font-size: 12px; cursor: pointer; }
+.core-history-empty { margin: 0; padding: 12px 16px; color: var(--core-faint); font-size: 12px; }
+.core-backlinks { width: 100%; margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--core-border-subtle); }
+.core-backlinks-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; color: var(--core-text); font-size: 12px; }
+.core-backlinks-heading span { min-width: 22px; padding: 2px 6px; border-radius: 999px; background: var(--core-selected); color: var(--core-accent); font-size: 11px; text-align: center; }
+.core-backlinks-empty { margin: 8px 0 0; color: var(--core-faint); font-size: 12px; }
+.core-backlinks-empty p { margin: 0; }
+.core-backlinks-empty small { display: block; margin-top: 4px; color: var(--core-muted); font-size: 11px; }
+.core-backlinks-list { display: grid; gap: 4px; margin-top: 8px; }
+.core-backlink-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; padding: 8px 9px; border: 1px solid transparent; border-radius: 7px; background: transparent; color: var(--core-text); text-align: left; cursor: pointer; }
+.core-backlink-row:hover { border-color: var(--core-border); background: var(--core-hover); }
+.core-backlink-row span { display: grid; min-width: 0; gap: 3px; }
+.core-backlink-row strong, .core-backlink-row small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.core-backlink-row strong { font-size: 12px; font-weight: 600; }
+.core-backlink-row small { color: var(--core-muted); font-size: 11px; }
+.core-backlink-arrow { flex: 0 0 auto; transform: rotate(180deg); color: var(--core-faint); }
+.core-inline-action { display: inline-flex; align-items: center; gap: 6px; margin-top: 12px; border: 0; background: transparent; color: var(--core-accent); cursor: pointer; }
+.core-slash-menu {
+  top: 12px;
+  right: auto;
+  bottom: auto;
+  left: 0;
+  width: min(420px, calc(100% - 12px));
+  border-radius: 9px;
+  box-shadow: 0 14px 34px rgb(55 48 39 / 16%);
+}
+.core-slash-row { padding: 6px 10px; font-size: 13px; }
+.core-slash-row small { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.core-check-list li { display: flex; align-items: center; gap: 8px; }
+/* Every Settings screen shares this one measure — no per-screen width
+   exceptions. The Plugins screen (builtin catalogue + market) lives inside
+   it too; its grids reflow to fewer columns rather than widening the pane. */
+/* Fill what is left below the topbar instead of a guessed calc(): that was
+   4px too tall, so the main area scrolled and the title jumped (CE47, CS54). */
+.core-settings-shell { grid-template-columns: 220px minmax(0, var(--core-measure)); gap: 34px; flex: 1 0 auto; min-height: 0; }
+.core-settings-nav { gap: 2px; border: 0; border-radius: 0; padding: 4px 0; background: transparent; }
+.core-settings-nav .core-eyebrow { padding: 0 10px 10px; }
+.core-settings-nav button { grid-template-columns: 20px minmax(0, 1fr); padding: 8px 10px; }
+.core-settings-nav button > svg { color: var(--core-muted); }
+.core-settings-nav button.is-active > svg { color: var(--core-accent); }
+.core-settings-nav button > span:last-child { min-width: 0; }
+.core-settings-nav small { overflow-wrap: anywhere; }
+/* Hover is lighter than the selected row, so the item under the mouse never
+   reads as a second selected section (CE46). */
+.core-settings-nav button:hover:not(.is-active) { background: var(--core-hover); border-color: transparent; }
+.core-settings-section { min-height: auto; border: 0; border-radius: 0; padding: 4px 0 60px; background: transparent; box-shadow: none; }
+/* Plugin settings joins the flat pass above instead of staying a pair of
+ * cards. Core Settings dropped its own nav/section borders here; the plugin
+ * layout kept them, which is the whole reason Plugin settings read as a
+ * separate product nested inside Settings rather than another Settings page.
+ * Same rail width, same gap, same 760px detail column as .core-settings-shell. */
+.core-plugin-settings-layout { grid-template-columns: 220px minmax(0, 1fr); gap: 34px; margin-top: 4px; }
+.core-plugin-settings-nav, .core-plugin-settings-content { border: 0; border-radius: 0; background: transparent; }
+.core-plugin-settings-nav { gap: 2px; padding: 4px 0; }
+.core-plugin-settings-nav button { padding: 8px 10px; }
+.core-plugin-settings-content { padding: 0; }
+.core-plugin-settings-detail-title { margin: 0 0 22px; padding-bottom: 14px; border-bottom: 1px solid var(--core-line-subtle); color: var(--core-ink); font-size: 20px; letter-spacing: -.02em; }
+/* Core names the panel now, so a plugin repeating its own title reads as a
+ * duplicate heading ("Work Packs settings" over "Work Packs (plugin)"). The
+ * intro paragraph stays — it says something the title does not. Scoped to
+ * this pane so the same component keeps its heading as a standalone surface. */
+.core-plugin-settings-content .settings-section > .settings-h2, .core-plugin-settings-content > .settings-h2 { display: none; }
+.core-settings-section-heading { padding-bottom: 22px; }
+/* One heading level between the section h2 and a row, shared by Hotkeys and
+ * Recovery. Both screens used to run several unrelated tasks as one flat list
+ * of rows — Recovery ran backup, media cleanup and trash together — so the
+ * only structure a reader got was horizontal rules. Nesting a second
+ * .core-settings-section-heading (what Plugin shortcuts did) is not the
+ * answer: it puts a second h2 inside a section that already has one. */
+.core-settings-group-heading { max-inline-size: min(100%, var(--core-measure)); margin: 22px 0 10px; }
+.core-settings-group-heading:first-of-type { margin-top: 6px; }
+.core-code-look-heading { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; max-inline-size: none; }
+.core-settings-group-heading h3, .core-trash-heading strong { margin: 0; color: var(--core-ink); font-size: 17px; font-weight: 600; letter-spacing: -.015em; }
+.core-settings-group-heading p { max-width: 62ch; margin: 5px 0 0; color: var(--core-muted); font-size: 12px; line-height: 1.5; }
+.core-settings-section-heading h2 { font-size: 28px; }
+.core-settings-mark { display: none; }
+.core-setting-row, .core-settings-action { max-inline-size: min(100%, var(--core-measure)); }
+.core-setting-value, .core-plugin-status { color: var(--core-muted); font-size: 12px; text-align: right; }
+.core-hotkey-list, .core-plugin-hotkey-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(var(--core-collection-min), 1fr)); gap: 0 24px; }
+.core-hotkey-list > div, .core-plugin-hotkey-list > div, .core-plugin-preference { display: flex; align-items: center; justify-content: space-between; gap: 20px; border-bottom: 1px solid var(--core-line-subtle); padding: var(--core-row-padding) 0; }
+.core-hotkey-list strong { display: inline-flex; align-items: center; gap: 5px; min-width: 130px; }
+.core-hotkey-list > div > span:last-child { flex: 1; color: var(--core-muted); font-size: 13px; }
+kbd { border: 1px solid var(--core-line); border-bottom-width: 2px; border-radius: 5px; padding: 3px 7px; background: var(--core-surface); color: var(--core-ink); font-size: 11px; }
+.core-plugin-preference > div { display: grid; gap: 4px; }
+.core-plugin-preference strong { font-size: 13px; }
+.core-plugin-preference small { color: var(--core-faint); font-size: 11px; line-height: 1.45; }
+.core-switch { position: relative; display: inline-flex; flex: 0 0 auto; width: 40px; height: 24px; }
+.core-switch input { position: absolute; inset: 0; width: 100%; height: 100%; min-block-size: 0; margin: 0; border: 0; background: transparent; opacity: 0; cursor: pointer; }
+.core-switch span { display: block; width: 40px; height: 24px; border: 1px solid var(--core-border); border-radius: 999px; background: var(--core-hover); transition: background 160ms ease, border-color 160ms ease; }
+.core-switch span::after { content: ""; display: block; width: 18px; height: 18px; margin: 2px; border-radius: 50%; background: var(--core-raised); box-shadow: 0 1px 3px rgb(55 48 39 / 20%); transition: transform 160ms ease; }
+.core-switch input:checked + span { background: var(--core-accent); }
+.core-switch input:checked + span { border-color: var(--core-accent); }
+.core-switch input:checked + span::after { transform: translateX(16px); }
+.core-switch input:focus-visible + span { outline: 2px solid var(--core-accent); outline-offset: 2px; }
+.core-switch.is-disabled { cursor: not-allowed; opacity: .55; }
+.core-switch.is-disabled input { cursor: not-allowed; }
+.core-settings-link { display: inline-flex; align-items: center; gap: 7px; margin-top: 20px; border: 0; background: transparent; color: var(--core-accent); cursor: pointer; }
+.core-settings-link .is-rotated { transform: rotate(180deg); }
+@media (max-width: 850px) {
+  .core-shell { grid-template-columns: 210px minmax(0, 1fr); }
+  .core-main { padding-inline: 28px; }
+  .core-settings-shell { grid-template-columns: 190px minmax(0, 1fr); gap: 24px; }
+}
+
+/* Ghost scrollbars — variant C from docs/scrollbar-variants.html, chosen
+   2026-08-16. Invisible at rest, fading in when the pointer enters (or
+   focus lands in) the region that scrolls. Deliberately one document-wide
+   `*` rule instead of per-surface CSS: the Core shell and every plugin
+   surface render into the same document, so this reaches plugin panels
+   without editing their stylesheets. Firefox reads `scrollbar-color`;
+   Chromium needs the ::-webkit-* pseudos, where the thumb is painted via
+   `background-clip: content-box` inside a transparent border so it keeps a
+   gap from the edge instead of filling the full 10px gutter. */
+* { scrollbar-width: thin; scrollbar-color: transparent transparent; }
+*:hover, *:focus-within { scrollbar-color: var(--core-scroll-thumb) transparent; }
+*::-webkit-scrollbar { width: 10px; height: 10px; }
+*::-webkit-scrollbar-track { background: transparent; }
+*::-webkit-scrollbar-corner { background: transparent; }
+*::-webkit-scrollbar-thumb { border: 3px solid transparent; border-radius: 99px; background: transparent; background-clip: content-box; transition: background .18s ease; }
+*:hover::-webkit-scrollbar-thumb, *:focus-within::-webkit-scrollbar-thumb { background: var(--core-scroll-thumb); background-clip: content-box; }
+*::-webkit-scrollbar-thumb:hover { background: var(--core-scroll-thumb-strong); background-clip: content-box; }
+/* Someone scrolling with the keyboard or a trackpad gesture never hovers —
+   respect a reduced-motion preference by dropping only the fade, not the
+   scrollbar itself. */
+@media (prefers-reduced-motion: reduce) { *::-webkit-scrollbar-thumb { transition: none; } }
+
+/* ---------- Plugin surfaces and Core-owned overlays (D7/D8/D16) ---------- */
+
+.core-plugin-mount { display: contents; }
+
+.core-plugin-slot { display: flex; flex-direction: column; gap: 6px; }
+
+/* A plugin view registered through `views.register` is a screen, not an
+   overlay: it takes the same outlined card, radius and minimum height as
+   .core-editor-only .core-editor-panel so a plugin surface sits beside Notes
+   as a peer instead of reading as a dialog dropped on top of the shell. */
+.core-plugin-view-pane {
+  display: flex;
+  flex: 1 0 auto;
+  flex-direction: column;
+  width: 100%;
+  min-width: 0;
+  min-height: calc(100dvh - 126px);
+  padding: 18px;
+  border: 1px solid var(--core-line);
+  border-radius: 14px;
+  background: var(--core-surface);
+  color: var(--core-text);
+  overflow: auto;
+}
+/* The mount itself is display: contents, so the plugin's own root is the
+   pane's flex child and can grow to fill it. */
+.core-plugin-view-pane > .core-plugin-mount > * { max-width: 100%; }
+/* Habits, Graph and ReportIt draw their own full-bleed surfaces; the card
+   treatment (lighter fill, border, radius) only boxed a box around them. They
+   sit flat on the workspace background instead, like an object tab does.
+   ponytail: plugin ids hardcoded here — three now; a `flatSurface` flag on
+   views.register would generalise it, but that is an API version for a
+   cosmetic default. Add the fourth id here; generalise at the fifth. */
+.core-plugin-view-pane[data-plugin-view^="notible.habits:"],
+.core-plugin-view-pane[data-plugin-view^="notible.graph:"],
+.core-plugin-view-pane[data-plugin-view^="notible.reportit:"] {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+/* Same row as every other nav button; the owning plugin id only appears when
+   two plugins picked the same title. */
+.core-nav button.is-plugin-view { grid-template-columns: 20px minmax(0, 1fr) auto; }
+.core-nav button.is-plugin-view span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.core-plugin-surface-error {
+  padding: 10px 12px;
+  border: 1px solid var(--core-line);
+  border-radius: 8px;
+  background: var(--core-surface);
+  color: var(--core-text);
+  font-size: 13px;
+}
+.core-plugin-surface-error p { margin: 4px 0 0; opacity: 0.75; }
+
+.core-plugin-notice-stack {
+  position: fixed;
+  right: 18px;
+  bottom: 18px;
+  z-index: 90;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: 340px;
+}
+.core-plugin-notice {
+  padding: 10px 14px;
+  border: 1px solid var(--core-line);
+  border-radius: 10px;
+  background: var(--core-surface);
+  color: var(--core-text);
+  box-shadow: 0 6px 20px rgb(0 0 0 / 12%);
+  font-size: 13px;
+  /* Plugin-supplied text: never let it break the box or the layout. */
+  overflow-wrap: anywhere;
+}
+
+.core-overlay-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgb(0 0 0 / 32%);
+}
+.core-overlay-backdrop.is-transparent { background: transparent; display: block; }
+
+/* Community-plugin trust prompt. Its own classes rather than the plugin
+   overlay ones above: no mounted surface, no header/close button — a plain
+   confirm card. Same tokens as the overlay modal. */
+.core-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 110;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgb(0 0 0 / 32%);
+}
+.core-modal {
+  max-width: 380px;
+  padding: 20px;
+  border: 1px solid var(--core-line);
+  border-radius: 12px;
+  background: var(--core-surface);
+  color: var(--core-text);
+  box-shadow: 0 18px 48px rgb(0 0 0 / 24%);
+}
+.core-modal h3 { margin: 0 0 8px; }
+.core-modal p { margin: 0; color: var(--core-muted); }
+.core-modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
+/* A modal that holds rendered markdown (release notes) rather than a short
+   confirm prompt — wider, and scrolls internally instead of growing past the
+   viewport. */
+.core-modal-wide { max-width: min(640px, calc(100vw - 48px)); max-height: min(640px, calc(100vh - 48px)); overflow-y: auto; }
+.core-modal-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
+.core-modal-head h3 { margin: 0; }
+
+.core-overlay-modal,
+.core-overlay-suggest {
+  width: min(560px, calc(100vw - 48px));
+  max-height: min(70vh, 640px);
+}
+
+/* A modal is as wide as what a plugin mounts in it, up to the window. The
+   fixed 560px squeezed every wide surface — the graph read as a small
+   floating box nothing could be done with. */
+.core-overlay-modal {
+  width: fit-content;
+  min-width: min(560px, calc(100vw - 48px));
+  max-width: calc(100vw - 48px);
+  max-height: min(88vh, 900px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--core-line);
+  border-radius: 12px;
+  background: var(--core-surface);
+  color: var(--core-text);
+  box-shadow: 0 18px 48px rgb(0 0 0 / 24%);
+}
+.core-overlay-modal > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--core-line);
+}
+.core-overlay-modal > header strong { overflow-wrap: anywhere; }
+.core-overlay-modal > header button {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+.core-overlay-modal > .core-plugin-mount,
+.core-overlay-modal > .core-plugin-surface-error { padding: 16px; overflow: auto; }
+
+/* API 1.18 context.ui.confirm — same shell as a plugin modal, fixed content
+   instead of a mount point. */
+.core-overlay-confirm { min-width: min(420px, calc(100vw - 48px)); }
+.core-overlay-confirm-message { margin: 0; padding: 16px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
+.core-overlay-confirm-actions { display: flex; justify-content: flex-end; gap: 8px; padding: 12px 16px; border-top: 1px solid var(--core-line); }
+
+.core-overlay-suggest { align-self: flex-start; margin-top: 12vh; }
+.core-overlay-suggest > input {
+  border: 0;
+  border-bottom: 1px solid var(--core-line);
+  padding: 12px 16px;
+  font: inherit;
+  color: inherit;
+  background: transparent;
+}
+.core-overlay-suggest-list { overflow: auto; padding: 6px; }
+.core-overlay-suggest-list button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+.core-overlay-suggest-list button:hover { background: var(--core-hover); }
+.core-overlay-empty { padding: 12px 16px; margin: 0; opacity: 0.7; font-size: 13px; }
+
+.core-overlay-menu {
+  position: absolute;
+  min-width: 180px;
+  max-width: 280px;
+  padding: 5px;
+  border: 1px solid var(--core-line);
+  border-radius: 10px;
+  background: var(--core-surface);
+  color: var(--core-text);
+  box-shadow: 0 12px 32px rgb(0 0 0 / 20%);
+}
+.core-overlay-menu button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 7px 10px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+.core-overlay-menu button:hover:not(:disabled) { background: var(--core-hover); }
+.core-overlay-menu button:disabled { opacity: 0.45; cursor: default; }
+.core-overlay-menu button.has-separator { margin-top: 5px; border-top: 1px solid var(--core-line); padding-top: 10px; border-radius: 0 0 7px 7px; }
+
+/* Inline slots sit in a row of existing controls (toolbar, footer, ribbon)
+   rather than stacking like the sidebar and properties ones. */
+.core-plugin-slot.is-inline { flex-direction: row; align-items: center; gap: 6px; }
+
+.core-plugin-host-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+
+.core-plugin-settings-block { margin-top: 18px; }
+.core-plugin-settings-block > h3 { margin: 0 0 4px; font-size: 14px; }
+.core-plugin-settings-form section + section { margin-top: 14px; }
+.core-plugin-settings-form h3 { margin: 0 0 4px; font-size: 13px; }
+.core-plugin-settings-hint { margin: 0 0 8px; font-size: 12px; opacity: 0.7; }
+.core-plugin-folder-field { display: flex; gap: 6px; align-items: center; }
+.core-plugin-folder-field input { min-width: 0; }
+.core-hotkey-recorder { display: inline-flex; align-items: center; gap: 6px; }
+.core-plugin-hotkey {
+  min-block-size: 30px;
+  border: 1px solid var(--core-line);
+  border-radius: 6px;
+  padding: 4px 9px;
+  background: var(--core-raised);
+  color: var(--core-text);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  cursor: pointer;
+}
+.core-plugin-hotkey.is-recording { border-color: var(--core-accent); background: var(--core-selected); }
+.core-plugin-hotkey.is-conflict { border-color: var(--core-danger); color: var(--core-danger); }
+.core-hotkey-clear { border: 0; background: transparent; color: var(--core-muted); padding: 2px 4px; font-size: 12px; cursor: pointer; }
+.core-hotkey-clear:hover { color: var(--core-text); }
+.core-hotkey-conflict { color: var(--core-danger); font-size: 11px; }
+.core-settings-hint { max-inline-size: min(100%, var(--core-measure)); margin-top: 18px; color: var(--core-muted); font-size: 13px; }
+/* Plugin-rendered code block. The <code> beside it is hidden, not removed —
+   it is still what the serializer reads. */
+.core-code-render { display: block; padding: 10px 0 2px; }
+.core-granted-path { overflow-wrap: anywhere; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
+
+/* Plugin overlays state their source; this must stay visible and is not
+   something a plugin can style away — Core owns the element.
+   Named `core-plugin-notice-*`, not `core-notice-*`: the latter is Core's own
+   status message and styling it here silently restyled that instead. */
+.core-plugin-notice-source {
+  display: block;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  opacity: 0.6;
+  margin-bottom: 2px;
+}
+.core-overlay-modal > header > span { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.core-overlay-modal > header .core-plugin-notice-source { margin: 0; }
+.core-plugin-notice-action {
+  display: block;
+  margin: 6px 0 0 auto;
+  padding: 3px 10px;
+  border: 1px solid var(--core-line);
+  border-radius: 7px;
+  background: transparent;
+  color: var(--core-text);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.core-plugin-notice-action:hover { background: var(--core-hover); }
+.core-plugin-notice-action:focus-visible { outline: 2px solid var(--core-accent); outline-offset: 1px; }
+
+/* Plugin code-block output. Scoped to the host-owned container so a renderer
+   cannot reach past it into the note. */
+.core-mermaid-diagram { display: flex; justify-content: center; overflow-x: auto; padding: 8px 0; }
+/* color: the fixed palettes leave some labels to inherit, which in Night is the
+   app's light text — near-invisible on this light panel (Hive #41). */
+.core-mermaid-diagram.has-fixed-light-theme { border-radius: 8px; background: var(--core-mermaid-fixed-background); color: #1f2733; }
+.core-mermaid-diagram svg { max-width: 100%; height: auto; }
+/* Mermaid's HTML labels are <p>s: host rules such as .core-editor-content p
+   (margin) or .core-matrix-detail-part p (muted colour) reached into them and
+   faded or shifted the text (Hive #41). The label's own colour and size win. */
+.core-mermaid-diagram svg foreignObject p { margin: 0; color: inherit; font: inherit; line-height: inherit; }
+.core-mermaid-diagram-error { font-size: 13px; color: var(--notible-danger); white-space: pre-wrap; }
+.core-mermaid-diagram { position: relative; }
+.core-mermaid-actions { position: absolute; top: 4px; right: 4px; display: flex; gap: 2px; opacity: 0; transition: opacity .15s; }
+.core-mermaid-diagram:hover .core-mermaid-actions, .core-mermaid-actions:focus-within { opacity: 1; }
+.core-mermaid-actions button, .core-mermaid-viewer-bar button { border: 1px solid var(--core-line); border-radius: 6px; padding: 3px 8px; background: var(--core-surface); color: var(--core-muted); cursor: pointer; font: inherit; font-size: 12px; }
+.core-mermaid-actions button:hover, .core-mermaid-viewer-bar button:hover { color: var(--core-ink); background: var(--core-hover); }
+.core-mermaid-viewer { position: fixed; inset: 0; z-index: 1000; overflow: hidden; background: var(--core-surface); cursor: grab; outline: none; }
+.core-mermaid-viewer:active { cursor: grabbing; }
+.core-mermaid-viewer > svg { position: absolute; left: 0; top: 0; user-select: none; }
+.core-mermaid-viewer-bar { position: absolute; top: 12px; right: 12px; display: flex; gap: 4px; cursor: default; }
+.core-code-comparison { container-type: inline-size; padding: 10px; }
+.core-code-comparison-panes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); border: 1px solid var(--core-border-subtle); border-radius: 8px; overflow: hidden; background: var(--core-background); }
+.core-code-comparison-pane { min-width: 0; overflow-x: auto; }
+.core-code-comparison-pane + .core-code-comparison-pane { border-left: 1px solid var(--core-border-subtle); }
+.core-code-comparison-pane > strong { display: block; position: sticky; left: 0; padding: 7px 10px; border-bottom: 1px solid var(--core-border-subtle); color: var(--core-muted); font: 600 11px/1.4 ui-sans-serif, system-ui, sans-serif; }
+.core-code-comparison-pane ol { counter-reset: code-line; min-width: max-content; margin: 0; padding: 8px 0; color: var(--core-faint); font: var(--core-code-size, 12px)/var(--core-code-line-height, 1.55) ui-monospace, SFMono-Regular, Consolas, monospace; tab-size: var(--core-code-tab-size, 8); list-style: none; }
+.core-code-comparison-pane li { display: grid; grid-template-columns: 4em minmax(0, 1fr); min-height: calc(var(--core-code-line-height, 1.55) * 1em); padding: 0 12px 0 0; white-space: pre; color: var(--core-text); }
+.core-code-comparison-pane li:not(.is-empty)::before { counter-increment: code-line; content: counter(code-line); padding-right: 10px; color: var(--core-faint); text-align: right; }
+.core-code-comparison-pane li.is-empty::before { content: ""; }
+.core-code-comparison-pane li.is-added { background: var(--core-success-surface); }
+.core-code-comparison-pane li.is-removed { background: var(--core-danger-surface); }
+.core-code-comparison-pane li.is-changed { background: var(--core-selected); }
+.core-code-comparison-pane li.is-empty { color: transparent; background: var(--core-hover); }
+.core-code-comparison-note { margin: 8px 2px 0; color: var(--core-muted); font-size: 11px; }
+@container (max-width: 620px) {
+  .core-code-comparison-panes { grid-template-columns: minmax(0, 1fr); }
+  .core-code-comparison-pane + .core-code-comparison-pane { border-left: 0; border-top: 1px solid var(--core-border-subtle); }
+}
+
+/* ---------- Core control geometry ----------
+ *
+ * Two rules that exist because of one report: in Settings → Updates the
+ * buttons grew when an update was found. Nothing grew — a second button
+ * crowded the row, flex shrank both (`flex-shrink: 1` is the default), the
+ * labels wrapped onto two lines, and `min-block-size` let the controls rise
+ * from 36px to ~52px.
+ *
+ * `npm run audit:controls` measured how far that goes: the label of **30 of
+ * 31** clickable controls in this file could wrap, and 1 of 44 flex rows
+ * pinned its children. So it was never a defect of the Updates screen; it was
+ * latent almost everywhere, and translation makes it likelier — Polish labels
+ * run longer than the English they replace.
+ *
+ * A control's label does not wrap. If a row runs out of space the row deals
+ * with it (wrap, scroll, or a narrower layout), because a control silently
+ * changing height is the one outcome a user reads as breakage.
+ */
+.core-settings-launcher, .core-secondary-action, .core-nav button, .core-search button,
+.core-matrix-presets button, .core-matrix-apply, .core-settings-nav button,
+.core-fatal-error button, .core-plugin-settings-nav button,
+.core-back-button, .core-selection-toolbar-btn, .core-create-button, .core-icon-action,
+.core-create-menu button, .core-table-context-menu button, .core-new-button,
+.core-search-action, .core-advanced-diagnostics-links button, .core-overlay-menu button,
+.core-editor-content .core-code-copy, .core-editor-content .core-code-format, .core-matrix-expanded-back,
+.core-hotkey-clear, .core-plugin-hotkey {
+  white-space: nowrap;
+}
+/* Menu rows are the one exception to the block above: a fixed-size control
+   silently changing height is bad, but a menu row is not fixed-size text —
+   it's a label that has to fit whatever width the menu itself is (260px),
+   and a long one ("Set as favourite (opens on launch)") must wrap instead of
+   overflowing past the menu's own edge. Same specificity as the shared rule,
+   declared after it so this wins. */
+.core-create-menu button, .core-table-context-menu button {
+  white-space: normal;
+  overflow-wrap: break-word;
+}
+
+/* One shape for the controls that stand next to each other. The audit found
+ * five different radii across 31 controls (8px ×10, 7px ×7, 6px ×5, 9px ×3,
+ * 999px ×1) — enough that two buttons in one row were rarely the same shape.
+ * Only the button families are unified here; menu rows, chips and hotkey
+ * pills keep their own geometry because they are a different kind of thing. */
+.core-button, .core-back-button, .core-search button, .core-new-button,
+.core-search-action, .core-advanced-diagnostics-links button {
+  border-radius: 8px;
+}
+
+/* Update notice: a card in the corner, never a modal. Same outline-not-fill
+   language as the rest of Core, so it reads as part of the app rather than
+   as an ad for one. */
+.core-update-toast {
+  position: fixed;
+  right: 18px;
+  bottom: 18px;
+  z-index: 95;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  max-width: min(420px, calc(100vw - 36px));
+  padding: 12px 12px 12px 16px;
+  border: 1px solid var(--core-line);
+  border-radius: 12px;
+  background: var(--core-surface);
+  color: var(--core-text);
+  box-shadow: 0 10px 32px rgb(0 0 0 / 14%);
+}
+.core-update-toast > div { display: grid; gap: 2px; min-width: 0; }
+.core-update-toast strong { font-size: 13px; }
+.core-update-toast p { margin: 0; color: var(--core-muted); font-size: 12px; line-height: 1.45; }
+.core-update-toast > .core-button { flex: none; }
+.core-update-toast-close {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--core-muted);
+  white-space: nowrap;
+  cursor: pointer;
+}
+.core-update-toast-close:hover { background: var(--core-hover); color: var(--core-text); }
+@media (prefers-reduced-motion: no-preference) {
+  .core-update-toast { animation: core-update-toast-in 180ms ease-out; }
+}
+@keyframes core-update-toast-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: none; }
+}
+
+/* Shared "view just mounted" fade — opacity/transform only (compositor-safe,
+   nothing layout-affecting), one-shot `animation` that plays automatically
+   whenever React mounts a fresh node, so it needs no JS state machine and
+   can't get stuck the way the earlier grid-template-columns attempt did
+   (see 0.82.5 checklist). Give a freshly-mounted view/panel/menu this class,
+   or key it so React remounts the node on switch (object-tab content already
+   does, via `key={active.tab.id}` in CorePluginContainerPanel). */
+@media (prefers-reduced-motion: no-preference) {
+  .core-view-in,
+  .core-container-slot,
+  .core-container-slot-empty { animation: core-view-in 160ms ease-out; }
+}
+@keyframes core-view-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: none; }
+}
+
+/* A settings hit in the search list: same row as a note, plus the one line
+   that says where it will take you. The icon distinguishes the two kinds
+   without a second heading style. */
+.core-search-setting { display: grid; grid-template-columns: auto 1fr; align-items: baseline; gap: 2px 8px; }
+.core-search-setting small { grid-column: 2; color: var(--core-muted); font-size: 11px; }
+
+/* Focus mode is one View Transition rather than a timed sequence of fades and
+   a layout swap. The old/new editor snapshots interpolate continuously, so
+   neither direction pauses halfway through or reveals the structural change. */
+/* Scoped to the moment a transition actually runs (`.core-transitioning`,
+   toggled in JS around startViewTransition), not permanent — see
+   toggleFocusMode in CoreOnlyApp.tsx for why a permanent
+   `view-transition-name` was a real bug, not just an unused hook. */
+.core-transitioning .core-sidebar { view-transition-name: core-focus-sidebar; }
+.core-transitioning .core-main { view-transition-name: core-focus-main; }
+@media (prefers-reduced-motion: no-preference) {
+  ::view-transition-old(root),
+  ::view-transition-new(root) { animation: none; }
+  ::view-transition-group(core-focus-main) { animation-duration: 620ms; animation-timing-function: cubic-bezier(.16, 1, .3, 1); }
+  ::view-transition-old(core-focus-main) { animation: 620ms cubic-bezier(.16, 1, .3, 1) both core-focus-old; }
+  ::view-transition-new(core-focus-main) { animation: 620ms cubic-bezier(.16, 1, .3, 1) both core-focus-new; }
+  ::view-transition-old(core-focus-sidebar) { animation: 440ms ease both core-focus-old; }
+  ::view-transition-new(core-focus-sidebar) { animation: 440ms ease both core-focus-new; }
+}
+@keyframes core-focus-old { to { opacity: 0; } }
+@keyframes core-focus-new { from { opacity: 0; } }
+
+.core-focus-mode.core-shell { grid-template-columns: minmax(0, 1fr); }
+.core-focus-mode .core-sidebar,
+.core-focus-mode .core-properties-aside { display: none; }
+.core-focus-mode .core-editor-only .core-editor-panel { border: 0; box-shadow: none; }
+/* Keep the toolbar row, but strip it to just the focus-keep items: the
+   "Saved" text and the icon buttons sit in nested divs, so hide any nested
+   child that is not marked .core-focus-keep. The `editing rules · <plugin>`
+   attribution carries .core-focus-keep and must stay visible even here — it
+   is the spec's mitigation for a plugin pulling a note under its profile. */
+.core-focus-mode .core-editor-toolbar > div > :not(.core-focus-keep) { display: none; }
+.core-focus-mode .core-editor-only .core-editor-panel,
+.core-focus-mode .core-editor-panel { width: min(100%, 58rem); max-width: 58rem; margin-inline: auto; }
+
+/* Reference UI: quiet navigation, clear hierarchy and one primary action. */
+.core-main { padding: 24px clamp(20px, 3vw, 48px) 32px; }
+.core-editor-toolbar { margin-bottom: 16px; }
+.core-title-input { font-size: clamp(28px, 2.4vw, 36px); letter-spacing: -.035em; }
+.core-object-tabs { gap: 8px; overflow-x: auto; margin-bottom: 18px; }
+.core-object-tabs button { display: inline-flex; align-items: center; gap: 7px; flex-shrink: 0; padding: 12px 10px; white-space: nowrap; }
+.core-object-tabs button.is-active { color: var(--core-accent); }
+.core-back-button, .core-icon-action, .core-search-action,
+.core-night .core-back-button { background: var(--core-surface); border-color: var(--core-border); color: var(--core-muted); }
+.core-back-button:hover, .core-icon-action:hover, .core-search-action:hover,
+.core-night .core-back-button:hover { background: var(--core-hover); border-color: var(--core-border); color: var(--core-text); }
+.core-settings-nav { padding: 12px; background: var(--core-hover); border-radius: 10px; }
+.core-settings-nav button { min-block-size: 40px; }
+/* 36 px rows (audit V-PLUGINS-04): name · status on one line, nothing else in the row but the switch. */
+.core-plugin-index-row { min-block-size: 36px; padding: 4px 10px; border-radius: 7px; }
+.core-plugin-detail-head { padding-bottom: 18px; border-bottom: 1px solid var(--core-border-subtle); }
+.core-plugin-detail-head h3 { font-size: 22px; }
+.core-settings-shell.has-plugins-detail { grid-template-columns: 190px minmax(280px, 1.4fr) minmax(250px, 1fr); gap: 24px; }
+.core-plugins-detail-pane { padding-left: 24px; }
+@media (max-width: 1200px) {
+  .core-settings-shell.has-plugins-detail { grid-template-columns: 170px minmax(0, 1fr); }
+  .core-plugins-detail-pane { grid-column: 2; position: static; max-height: none; padding: 20px 0 0; border-left: 0; border-top: 1px solid var(--core-border-subtle); }
+}
+
+/* Settings keeps one document measure, including the plugin catalogue. */
+.core-settings-shell, .core-settings-shell.has-plugins-detail {
+  grid-template-columns: 220px minmax(0, var(--core-measure));
+  gap: 24px 34px;
+}
+.core-plugins-detail-pane {
+  grid-column: 2; position: static; max-height: none; margin: 0;
+  padding: 24px 0 0; border-left: 0; border-top: 1px solid var(--core-line-subtle);
+}
+/* Wide window (1400px, so the default 1440×900 window qualifies): the selected plugin's details sit beside the list, sticky while
+   the list scrolls. Narrower than this they stay below the list, as above. */
+@media (min-width: 1340px) {
+  .core-settings-shell.has-plugins-detail { grid-template-columns: 220px minmax(320px, 0.9fr) minmax(360px, 1fr); gap: 24px 34px; }
+  .core-plugins-detail-pane { grid-column: 3; grid-row: 1; position: sticky; top: 16px; max-height: calc(100dvh - 160px); overflow-y: auto; padding: 0 0 0 28px; border-top: 0; border-left: 1px solid var(--core-line-subtle); }
+}
+/* Settings > Languages */
+.core-lang-heading { margin: 28px 0 8px; color: var(--core-muted); font-size: 12px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+.core-lang-list { list-style: none; margin: 0; padding: 0; max-inline-size: min(100%, var(--core-measure)); }
+.core-lang-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 12px 4px; border-bottom: 1px solid var(--core-border-subtle); }
+.core-lang-row > div:first-child { display: grid; gap: 2px; min-width: 0; }
+.core-lang-row small { color: var(--core-muted); font-size: 12px; }
+.core-lang-actions { display: flex; align-items: center; gap: 8px; }
+.core-lang-badge { color: var(--core-accent); font-size: 12px; font-weight: 700; }
+.core-lang-github { display: flex; gap: 8px; max-inline-size: min(100%, var(--core-measure)); }
+.core-lang-github input { flex: 1; min-width: 0; border: 1px solid var(--core-border); border-radius: 8px; padding: 8px 10px; background: var(--core-raised); color: var(--core-text); font: inherit; }
+/* Files & links uses the same type sizes as every other settings page (CE48). */
+.core-files-settings .core-setting-row { align-items: center; padding-block: 14px; gap: 24px; }
+.core-files-settings .core-setting-row > div { min-width: 0; }
+.core-files-settings .core-granted-path { overflow-wrap: anywhere; }
+@media (max-width: 980px) {
+  .core-settings-shell, .core-settings-shell.has-plugins-detail { grid-template-columns: 190px minmax(0, 1fr); gap: 24px; }
+}
+@media (max-width: 680px) {
+  .core-settings-shell, .core-settings-shell.has-plugins-detail { grid-template-columns: minmax(0, 1fr); }
+  .core-plugins-detail-pane { grid-column: 1; }
+}
+
+/* Theme packs can restyle nearly everything, but not the places where a person decides something
+   they cannot undo, nor the Themes screen (so a bad theme can always be switched off).
+   These rules are !important on purpose: a theme's own !important is stripped when it is loaded
+   (themeCss.ts), so nothing a theme says can outrank them. A theme cannot hide, fade, move, blur,
+   overlay or relabel a control inside these areas. */
+.core-critical, .core-critical *,
+.core-row-delete-actions, .core-row-delete-actions *,
+p:has(+ .core-row-delete-actions),
+.core-restore-confirm, .core-restore-confirm *,
+[role="alertdialog"], [role="alertdialog"] * {
+  visibility: visible !important;
+  opacity: 1 !important;
+  transform: none !important;
+  translate: none !important;
+  rotate: none !important;
+  scale: none !important;
+  filter: none !important;
+  backdrop-filter: none !important;
+  clip-path: none !important;
+  mask: none !important;
+  mix-blend-mode: normal !important;
+  pointer-events: auto !important;
+  text-indent: 0 !important;
+  text-shadow: none !important;
+  -webkit-text-fill-color: currentColor !important;
+  animation: none !important;
+}
+.core-critical::before, .core-critical::after, .core-critical *::before, .core-critical *::after,
+.core-row-delete-actions::before, .core-row-delete-actions::after, .core-row-delete-actions *::before, .core-row-delete-actions *::after,
+.core-restore-confirm::before, .core-restore-confirm::after, .core-restore-confirm *::before, .core-restore-confirm *::after,
+[role="alertdialog"]::before, [role="alertdialog"]::after, [role="alertdialog"] *::before, [role="alertdialog"] *::after {
+  content: none !important;
+  display: none !important;
+}
+.core-critical button, .core-row-delete-actions button, .core-restore-confirm button, [role="alertdialog"] button {
+  display: inline-flex !important;
+  position: static !important;
+}
+
+/* Theme-pack hook (docs/THEME_PACKS.md): the main work area, drawn over the app backdrop. */
+.core-main { background: var(--notible-main-background, transparent); }
+
+/* Settings > Plugins: the details panel fades and rises in when another plugin is picked
+   (the panel is re-keyed per plugin). Opacity + a small move only; no fill-mode after the end. */
+@keyframes core-detail-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+.core-plugin-detail { animation: core-detail-in 220ms cubic-bezier(.2, .7, .2, 1) backwards; }
+@media (prefers-reduced-motion: reduce) { .core-plugin-detail { animation: none; } }
+
+/* Reload buttons: the arrow turns a full circle on hover. */
+.core-plugin-index-reload svg, .core-reload-button svg { transition: transform 480ms cubic-bezier(.3, .7, .2, 1); }
+.core-plugin-index-reload:hover:not(:disabled) svg, .core-reload-button:hover:not(:disabled) svg { transform: rotate(360deg); }
+.core-reload-button { display: inline-flex; align-items: center; gap: 6px; }
+@media (prefers-reduced-motion: reduce) { .core-plugin-index-reload svg, .core-reload-button svg { transition: none; } }
+
+/* Settings grows with its content. Squeezed to the window by its parent, the
+   grid box ended long before the plugin list did, and the sticky plugin
+   details scrolled away with it on smaller windows. */
+.core-settings-shell { flex-shrink: 0; align-self: start; }
+
+/* Compact density (D13). Earlier rules only touched selectors that later
+   rules overrode, so Compact changed nothing anyone could see (CS36). These
+   come last and carry the shell class, so they win. */
+.core-shell.core-compact .core-object-row { padding-block: 5px; }
+.core-shell.core-compact .core-object-tree-row .core-tree-toggle { min-block-size: 0; }
+.core-shell.core-compact .core-nav button, .core-shell.core-compact .core-settings-launcher { padding-block: 6px; }
+.core-shell.core-compact .core-main { padding-block: 14px 20px; }
+.core-shell.core-compact .core-topbar { margin-bottom: 12px; }
+.core-shell.core-compact .core-editor-panel { padding: 14px 22px 20px; }
+.core-shell.core-compact .core-editor-toolbar { margin-bottom: 12px; }
+.core-shell.core-compact .core-setting-row, .core-shell.core-compact .core-settings-action { padding-block: 8px; }
+.core-shell.core-compact .core-settings-nav button { padding-block: 5px; }
+.core-shell.core-compact .core-settings-section-heading { margin-bottom: 12px; }
+.core-shell.core-compact .core-plugin-index-row { min-block-size: 0; padding-block: 2px; }
+
+/* API 1.22 corner helper. Bottom-left of the note area (left is measured in
+   JS), clear of the update card and notices on the right. Below every Core
+   overlay. The caption is Core's, outside the plugin's box. */
+.core-corner { position: fixed; bottom: 16px; z-index: 50; display: grid; justify-items: start; gap: 4px; pointer-events: none; }
+.core-corner.is-hidden, body:has(.core-modal-backdrop, .core-overlay-backdrop) .core-corner { display: none; }
+.core-corner-box { max-width: min(380px, 40vw); max-height: min(560px, 70vh); overflow: hidden; contain: layout paint; pointer-events: auto; }
+.core-corner-caption { margin: 0; padding: 1px 6px; border-radius: 999px; background: var(--core-surface); color: var(--core-faint); font-size: 10px; line-height: 1.4; pointer-events: auto; }
+/* With a helper in the corner, the end of a note (Backlinks) can scroll out from under it. */
+body:has(.core-corner:not(.is-hidden) .core-corner-box > *) .core-backlinks { margin-bottom: 96px; }
+
+/* R3: notice action, trash actions, tree rename, drag into a row, menu groups. */
+.core-main > .core-notice { display: flex; align-items: center; gap: 12px; }
+.core-notice-action { margin-left: auto; border: 0; border-radius: 6px; padding: 3px 10px; background: transparent; color: inherit; font: inherit; font-weight: 600; text-decoration: underline; cursor: pointer; }
+.core-notice-action:hover { background: color-mix(in srgb, currentColor 12%, transparent); }
+.core-collection-actions { display: inline-flex; flex: none; gap: 4px; }
+.core-object-row-rename { min-width: 0; flex: 1; margin: 3px 6px 3px 0; border: 1px solid var(--core-accent); border-radius: 6px; padding: 6px 8px; background: var(--core-surface); color: var(--core-ink); font: inherit; font-size: 13px; outline: none; }
+.core-object-tree-row.is-drag-into > .core-object-row { background: var(--core-selected); box-shadow: inset 0 0 0 1px var(--core-accent); }
+.core-menu-hint { margin-left: auto; padding: 0 5px; border: 1px solid var(--core-line); border-radius: 4px; color: var(--core-faint); font: inherit; font-size: 10px; }
+.core-menu-chevron { margin-left: auto; transition: transform 120ms ease; }
+.core-menu-chevron.is-expanded { transform: rotate(90deg); }
+.core-menu-group { display: grid; padding-left: 24px; }
+.core-menu-empty { margin: 0; padding: 8px 9px; color: var(--core-muted); font-size: 12px; }
+.core-breadcrumb { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; text-transform: none; letter-spacing: 0; font-size: 12px; }
+.core-breadcrumb > span { display: inline-flex; align-items: center; gap: 4px; }
+.core-breadcrumb button { border: 0; border-radius: 4px; padding: 1px 3px; background: transparent; color: inherit; font: inherit; letter-spacing: inherit; text-transform: inherit; cursor: pointer; max-width: 22ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.core-breadcrumb button:hover { background: var(--core-hover); color: var(--core-ink); }
+.core-editor-meta:empty { min-height: 6px; }
+.core-create-target { display: flex; align-items: center; gap: 8px; margin: 0 0 4px; padding: 4px 9px 8px; border-bottom: 1px solid var(--core-line); color: var(--core-muted); font-size: 11px; }
+.core-create-target span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.core-create-menu .core-create-target button { width: auto; margin-left: auto; padding: 2px 6px; color: var(--core-accent); font-size: 11px; white-space: nowrap; }
+.core-history-of { margin: 2px 0 0; color: var(--core-muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 280px; }
+.core-history-rendered { font-size: 13px; line-height: 1.55; overflow-wrap: anywhere; }
+/* Errors float too (N2): in the flow they pushed the page down under the cursor. */
+.core-main > .core-alert { position: fixed; top: 14px; right: 18px; z-index: 97; display: flex; align-items: flex-start; gap: 10px; width: auto; max-width: min(460px, calc(100vw - 36px)); margin: 0; box-shadow: 0 10px 28px rgb(0 0 0 / 14%); animation: core-view-in 160ms ease-out; }
+.core-alert .core-notice-action { text-decoration: none; font-size: 16px; line-height: 1; padding: 0 4px; }
+
+/* Plugins, 0.93.1 (audit): an Update chip only when there is one; guides folded;
+   permissions as a short list; below 1400 px the list or the details, never both stacked. */
+.core-plugin-index-update { flex: none; border: 1px solid var(--core-accent); border-radius: 999px; padding: 2px 10px; background: transparent; color: var(--core-accent); font: inherit; font-size: 11px; cursor: pointer; }
+.core-plugin-index-update:hover:not(:disabled) { background: var(--core-selected); }
+.core-plugin-guide-fold > summary { cursor: pointer; list-style: none; }
+.core-plugin-guide-fold > summary::-webkit-details-marker { display: none; }
+.core-plugin-guide-fold > summary::after { content: " ›"; color: var(--core-faint); }
+.core-plugin-guide-fold[open] > summary::after { content: " ⌄"; }
+.core-plugin-permissions { margin: 4px 0 0; padding-left: 18px; color: var(--core-muted); font-size: 13px; line-height: 1.6; }
+.core-plugin-detail-back { display: none; margin: 0 0 12px; border: 0; padding: 4px 0; background: transparent; color: var(--core-accent); font: inherit; font-size: 13px; cursor: pointer; }
+@media (max-width: 1339px) {
+  .core-settings-shell.has-plugins-detail[data-plugin-open="true"] .core-settings-detail { display: none; }
+  .core-settings-shell.has-plugins-detail[data-plugin-open="false"] .core-plugins-detail-pane { display: none; }
+  .core-settings-shell.has-plugins-detail[data-plugin-open="true"] .core-plugins-detail-pane { grid-row: 1; border-top: 0; padding-top: 0; }
+  .core-plugin-detail-back { display: inline-flex; }
+}
+/* Note editor, 0.93.1 (audit). Wide screens: the note reads in a capped, centred column (D15,
+   V-SCREENS-07). Narrow: Properties folds behind its toolbar button so the note gets the width
+   (V-SURFACES-01); the stats stay on one line. */
+.core-editor-panel.is-note > :not(.core-editor-toolbar) { width: 100%; max-inline-size: 860px; margin-inline: auto; }
+.core-editor-stats > * { white-space: nowrap; }
+.core-properties-toggle { display: none; }
+.core-properties-toggle.is-active { color: var(--core-accent); background: var(--core-selected); }
+@media (max-width: 1199px) {
+  .core-properties-toggle { display: inline-flex; }
+  .core-properties-aside { display: none; }
+  .core-properties-aside.is-open { display: block; }
+}
+.core-object-tabbar { display: flex; align-items: center; gap: 8px; min-width: 0; margin-bottom: 18px; border-bottom: 1px solid var(--core-line-subtle); }
+.core-object-tabbar > .core-object-tabs { flex: 1 1 auto; min-width: 0; margin-bottom: 0; border-bottom: 0; overflow-x: auto; scrollbar-width: none; mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent); }
+.core-object-tabbar > .core-object-tabs::-webkit-scrollbar { display: none; }
+.core-object-tabbar > .core-object-tabs-modules { flex: none; }
+.core-hotkey-caps { display: inline-flex; align-items: center; gap: 3px; }
+.core-hotkey-caps > span { display: inline-flex; align-items: center; gap: 3px; }
+
+/* Re-audit 02.10. Market rows: one line of description, the rest in the details (V-RESCREENS-02). */
+.core-plugin-index-name:has(> .core-plugin-index-desc) { display: grid; grid-template-columns: minmax(0, 1fr); flex: 1 1 auto; min-width: 0; }
+.core-plugin-index-name > .core-plugin-index-desc { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Project tabs scroll, they never shrink into "Whiteboar…" (V-RESURFACES-02). */
+.core-object-tabbar > .core-object-tabs > button { flex: none; }
+/* Files & links: each group visibly starts with a rule above it (V-RESCREENS-03; outline, not boxes). */
+.core-files-settings .core-settings-group-heading:not(:first-of-type) { margin-top: 32px; padding-top: 20px; border-top: 1px solid var(--core-line); }
+/* Recovery: the backup summary at a readable size (V-RESCREENS-04). */
+.core-collection-summary p { font-size: 13px; }
+
+/* R4 T6: one scroll area. A project's tab content scrolls with the page (.core-main), not in a
+   short box of its own under it; boards and canvases keep their own height rules. */
+.core-container-slot { flex: 0 0 auto; min-height: auto; overflow: visible; }
+.core-editor-only .core-editor-panel:has(> .core-container-slot) { min-height: calc(100dvh - 126px); }
+/* With the page as the one scroller, a sticky header (a table's) stops at .core-main's padding,
+   leaving a strip of rows visible above it. The same space as a margin on the first child keeps
+   the look and lets sticky things reach the top edge. */
+.core-main:has(.core-container-slot) { padding-top: 0; }
+.core-main:has(.core-container-slot) > :first-child { margin-top: 24px; }
+
+/* R5 L1 (D5): under 700 px the content comes first and the sidebar slides over it from the menu
+   button; a tap outside, Esc, or opening anything closes it. Replaces the stacked sidebar. */
+.core-menu-toggle { display: none; }
+.core-sidebar-backdrop { display: none; }
+@media (max-width: 699px) {
+  .core-shell { display: block; block-size: 100dvh; overflow: hidden; }
+  .core-main { block-size: 100dvh; min-height: 0; overflow: auto; }
+  .core-sidebar { position: fixed; inset: 0 auto 0 0; z-index: 70; width: min(300px, 86vw); min-height: 0; padding: 16px 12px 14px; transform: translateX(-100%); visibility: hidden; transition: transform 180ms ease, visibility 0s linear 180ms; box-shadow: 0 0 40px rgb(0 0 0 / 22%); }
+  .core-shell.is-sidebar-open .core-sidebar { transform: none; visibility: visible; transition: transform 180ms ease; }
+  .core-sidebar-footer { display: flex; }
+  .core-sidebar-notes { max-height: none; }
+  .core-sidebar-backdrop { display: block; position: fixed; inset: 0; z-index: 69; background: rgb(0 0 0 / 32%); }
+  .core-menu-toggle { display: inline-grid; place-items: center; flex: none; inline-size: 36px; block-size: 36px; margin: 0 4px 8px 0; border: 1px solid var(--core-line); border-radius: 9px; background: transparent; color: var(--core-ink); cursor: pointer; }
+  .core-menu-toggle:hover { background: var(--core-hover); }
+  .core-topbar { flex-direction: row; flex-wrap: wrap; align-items: flex-start; }
+}
+@media (max-width: 699px) and (prefers-reduced-motion: reduce) {
+  .core-sidebar, .core-shell.is-sidebar-open .core-sidebar { transition: none; }
+}
+/* R5 L2: a note's footer (stats, then backlinks) sits right under the text, not pinned to the
+   bottom of the window; on a narrow window the stats wrap instead of clipping. */
+.core-editor-panel.is-note .core-editor-body-wrap { flex: 0 0 auto; }
+.core-editor-panel.is-note .core-editor-content { min-height: 180px; }
+.core-editor-stats { flex-wrap: wrap; row-gap: 4px; }
+/* R5 L6: menus keep their labels on one line on a narrow window. */
+.core-create-menu.core-row-context-menu { min-width: 200px; }
+.core-create-menu.core-row-context-menu button { white-space: nowrap; }
+/* R5 F1/F3: a search hit says where it lives and shows the words around the match. */
+.core-search-hit small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.core-search-hit-where { color: var(--core-muted); font-weight: 600; }
+.core-search-hit-where + .core-search-hit-snippet::before { content: " · "; }
+.core-search-hit-snippet { color: var(--core-faint); }
+
+/* R5 F3: one quiet Filters button in the search box; the chips appear when asked for. */
+.core-search-filters-toggle { display: inline-grid; place-items: center; flex: none; inline-size: 28px; block-size: 28px; border: 1px solid transparent; border-radius: 7px; background: transparent; color: var(--core-muted); cursor: pointer; }
+.core-search-filters-toggle:hover { background: var(--core-hover); color: var(--core-ink); }
+.core-search-filters-toggle.is-active { border-color: var(--core-accent); color: var(--core-accent); }
+/* L1: on a narrow window the title sits beside the menu button, not floated to the middle. */
+@media (max-width: 699px) {
+  .core-topbar > div { flex: 1 1 0; min-width: 0; }
+  .core-topbar { justify-content: flex-start; gap: 12px; }
+}
+/* L6: the empty sidebar's "Create the first note" stays on one line. */
+.core-empty .core-inline-action { white-space: nowrap; }
+/* M6: the plugins line closes the + menu, set apart by a rule. */
+.core-create-menu .core-create-more { border-top: 1px solid var(--core-line-subtle); margin-top: 4px; padding-top: 8px; }
+.core-setting-inline { display: inline-flex; align-items: center; gap: 8px; }

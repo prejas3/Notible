@@ -1,0 +1,1 @@
+{"id":"notible.queries","name":"Embedded queries","version":"0.1.0","apiVersion":"1.3","entry":"index.js","permissions":["workspace.ui","data.read","editor.extension"]}

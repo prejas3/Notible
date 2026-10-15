@@ -1,0 +1,201 @@
+/* Embedded query blocks. Primitives come from surface.css; only what a result
+   table inside a code fence needs lives here. */
+
+.nq-root {
+  display: grid;
+  gap: 10px;
+  padding: 12px 0 2px;
+}
+
+.nq-loading,
+.nq-summary {
+  margin: 0;
+  color: var(--notible-muted);
+  font-size: 11.5px;
+}
+
+.nq-summary {
+  margin-top: 2px;
+  letter-spacing: .01em;
+}
+
+/* Not a decoration: this line is the block admitting the workspace holds more
+   than the query could see. Outline, not a filled slab — it warns without
+   shouting over the table it sits under. */
+.nq-truncated {
+  margin: 0;
+  padding: 6px 10px;
+  border: 1px solid var(--notible-danger);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--notible-danger);
+  font-size: 11.5px;
+  line-height: 1.45;
+}
+
+/* Hairline-ruled, not a grid of cells. One light box, rows divided by a rule,
+   nothing filled. */
+.nq-table,
+.nq-list {
+  display: grid;
+  overflow: hidden;
+  border: 1px solid var(--notible-border);
+  border-radius: 10px;
+  background: var(--notible-surface);
+}
+
+.nq-row {
+  display: grid;
+  grid-template-columns: 2.4fr repeat(calc(var(--nq-columns, 1) - 1), minmax(0, 1fr));
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 9px 12px;
+  border: 0;
+  border-top: 1px solid var(--notible-border-subtle, var(--notible-border));
+  background: transparent;
+  color: var(--notible-text);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.nq-row:first-child {
+  border-top: 0;
+}
+
+.nq-row:hover {
+  background: var(--notible-hover);
+}
+
+.nq-head {
+  border-top: 0;
+  border-bottom: 1px solid var(--notible-border);
+  cursor: default;
+  color: var(--notible-muted);
+  font-size: 10.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+}
+
+.nq-head:hover {
+  background: transparent;
+}
+
+.nq-list .nq-row {
+  grid-template-columns: minmax(0, 1fr);
+  padding: 10px 12px;
+}
+
+.nq-cell {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--notible-muted);
+}
+
+.nq-cell-title {
+  color: var(--notible-text);
+  font-weight: 600;
+}
+
+/* `as: count` — read it as a stat, not a sentence. */
+.nq-count {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 4px 0;
+}
+
+.nq-count-value {
+  color: var(--notible-text);
+  font-size: 30px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+.nq-count-label {
+  color: var(--notible-muted);
+  font-size: 10.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+}
+
+/* Empty result: quiet, not an error. */
+.nq-root .ns-empty {
+  margin: 0;
+  padding: 12px;
+  color: var(--notible-faint);
+  font-size: 12px;
+  font-style: italic;
+}
+
+.nq-errors {
+  display: grid;
+  gap: 6px;
+  padding: 10px 12px;
+  border: 1px solid var(--notible-danger);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--notible-danger);
+  font-size: 12px;
+}
+
+.nq-errors-title {
+  font-size: 13px;
+}
+
+.nq-error-list {
+  display: grid;
+  gap: 5px;
+  margin: 0;
+  padding-left: 16px;
+}
+
+.nq-error-line {
+  display: block;
+  color: var(--notible-text);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+}
+
+.nq-error-message {
+  display: block;
+}
+
+/* The cheat sheet, beside the table it describes. Collapsed by default and
+   deliberately faint — it must never compete with the data. */
+.nq-help > summary { width: fit-content; margin-top: 2px; color: var(--notible-faint); font-size: 11px; cursor: pointer; list-style: none; }
+.nq-help > summary::-webkit-details-marker { display: none; }
+.nq-help > summary::before { content: "› "; }
+.nq-help[open] > summary::before { content: "⌄ "; }
+.nq-help > summary:hover { color: var(--notible-text); text-decoration: underline; }
+.nq-help[open] > summary { margin-bottom: 8px; }
+.nq-help .nq-doc-keys { display: grid; gap: 4px; margin: 0; padding: 0; list-style: none; color: var(--notible-muted); font-size: 12px; }
+/* One line per key: the token, then its sentence. Inheriting the block-level
+   code style from the query source turned every entry into two lines of
+   monospace. */
+/* The block renders inside the editor, so list spacing has to be stated
+   here — otherwise the note's own paragraph rhythm spreads nine rows over a
+   screenful. */
+.nq-help .nq-doc-keys li { display: flex; gap: 8px; align-items: baseline; margin: 0; line-height: 1.5; }
+.nq-help .nq-doc-keys code { flex: 0 0 auto; min-width: 96px; padding: 0; background: transparent; color: var(--notible-text); font-size: 11px; }
+.nq-help .nq-doc-note { margin: 6px 0 0; color: var(--notible-faint); font-size: 11px; line-height: 1.55; }
+/* The worked example: shown as what you would actually type, so it can be
+   copied by eye. Its own hairline keeps it from reading as part of the note. */
+.nq-help .nq-doc-example {
+  margin: 4px 0 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--notible-border);
+  border-radius: 8px;
+  color: var(--notible-text);
+  font-size: 11px;
+  line-height: 1.6;
+  white-space: pre;
+  overflow-x: auto;
+}

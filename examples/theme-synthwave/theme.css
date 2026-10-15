@@ -1,0 +1,62 @@
+/* Synthwave: neon sunset, wireframe grid, frosted glass.
+   Uses only the documented hooks (docs/THEME_PACKS.md). */
+
+:root {
+  /* Colours */
+  --notible-background: #14082b;
+  --notible-surface: rgba(28, 12, 58, 0.55);
+  --notible-raised: rgba(48, 22, 92, 0.78);
+  --notible-hover: rgba(255, 62, 165, 0.14);
+  --notible-active: rgba(255, 62, 165, 0.24);
+  --notible-border: rgba(120, 140, 255, 0.30);
+  --notible-border-subtle: rgba(120, 140, 255, 0.15);
+  --notible-text: #f6eeff;
+  --notible-muted: #c0aff0;
+  --notible-faint: #8f7dc6;
+  --notible-accent: #ff3ea5;
+  --notible-accent-hover: #ff6cbc;
+  --notible-on-accent: #1a0633;
+  --notible-selected: rgba(255, 62, 165, 0.20);
+  --notible-selected-soft: rgba(255, 62, 165, 0.09);
+  --notible-danger: #ff6b8a;
+  --notible-success: #4ff0c0;
+  --notible-warning: #ffb454;
+
+  /* The picture, darkened a little so text stays readable over it. */
+  --notible-app-backdrop:
+    linear-gradient(rgba(14, 5, 36, 0.30), rgba(14, 5, 36, 0.55)),
+    url("assets/synthwave.jpg") center bottom / cover no-repeat;
+
+  /* Glass sidebar. */
+  --notible-sidebar-background: rgba(22, 8, 52, 0.42);
+  --notible-sidebar-filter: blur(16px) saturate(150%);
+
+  /* A tint (not a blur) on the work area: it holds pop-ups and drag layers. */
+  --notible-main-background: rgba(14, 5, 36, 0.34);
+
+  --notible-editor-line-height: 1.75;
+}
+
+/* Neon edge on the sidebar. */
+[data-notible-region="sidebar"] {
+  box-shadow: 1px 0 0 rgba(255, 62, 165, 0.35), 10px 0 44px rgba(255, 62, 165, 0.10);
+}
+
+/* Titles glow softly. */
+[data-notible-region="editor"] h1,
+[data-notible-region="editor"] h2 {
+  text-shadow: 0 0 18px rgba(255, 62, 165, 0.45);
+}
+
+/* Note text: a comfortable column over the picture. */
+[data-notible-region="editor"] {
+  max-width: 860px;
+  background: rgba(16, 6, 42, 0.62);
+  border: 1px solid rgba(120, 140, 255, 0.18);
+  border-radius: 12px;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  @keyframes synth-in { from { opacity: 0; transform: translateY(3px); } to { opacity: 1; transform: none; } }
+  .core-object-row { animation: synth-in 200ms ease-out backwards; }
+}

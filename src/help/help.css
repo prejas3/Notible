@@ -1,0 +1,51 @@
+.core-help { display: grid; grid-template-columns: 220px minmax(0, var(--core-measure)); gap: 24px 34px; align-items: start; }
+.core-help-toc { position: sticky; top: 16px; display: grid; gap: 14px; }
+.core-help-chapter { display: grid; gap: 2px; }
+.core-help-chapter-title { margin: 0 0 4px; color: var(--core-muted); font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+.core-help-toc button { padding: 6px 10px; border: 0; border-radius: 7px; background: transparent; color: var(--core-text); font: inherit; font-size: 13px; text-align: left; cursor: pointer; }
+.core-help-toc button:hover { background: var(--core-selected-soft); }
+.core-help-toc button.is-active { background: var(--core-selected); color: var(--core-ink); font-weight: 600; box-shadow: inset 3px 0 0 var(--core-accent); }
+.core-help-page { min-width: 0; color: var(--core-text); font-size: 15px; line-height: 1.7; scroll-margin-top: 16px; }
+.core-help-title { margin: 0 0 12px; color: var(--core-ink); font-size: 28px; letter-spacing: -.02em; }
+.core-help-body h1, .core-help-body h2, .core-help-body h3 { color: var(--core-ink); scroll-margin-top: 16px; border-radius: 6px; transition: background-color 400ms ease; }
+.core-help-body img, .core-help-body video { display: block; max-width: 100%; margin: 12px 0; border: 1px solid var(--core-line-subtle); border-radius: 8px; }
+.core-help-body video { cursor: pointer; }
+.core-help-body table { width: 100%; border-collapse: collapse; }
+.core-help-body th, .core-help-body td { padding: 8px 10px; border-bottom: 1px solid var(--core-line-subtle); text-align: left; vertical-align: top; }
+.core-help-link { color: var(--core-accent); text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
+.core-help-flash { background: color-mix(in srgb, var(--core-accent) 24%, transparent); }
+.core-help-pager { display: flex; justify-content: space-between; gap: 16px; margin-top: 40px; padding-top: 16px; border-top: 1px solid var(--core-line-subtle); }
+.core-help-pager button { border: 0; background: transparent; color: var(--core-accent); font: inherit; cursor: pointer; }
+@media (max-width: 980px) { .core-help { grid-template-columns: 1fr; } .core-help-toc { position: static; } }
+@media (prefers-reduced-motion: reduce) { .core-help-body h1, .core-help-body h2, .core-help-body h3 { transition: none; } }
+.core-help-contents-toggle { display: none; justify-self: start; border: 1px solid var(--core-line); border-radius: 999px; padding: 4px 12px; background: transparent; color: var(--core-text); font: inherit; font-size: 13px; cursor: pointer; }
+@media (max-width: 1179px) {
+  .core-help { grid-template-columns: minmax(0, var(--core-measure)); }
+  .core-help-contents-toggle { display: inline-flex; }
+  .core-help-toc { display: none; position: static; padding: 12px; border: 1px solid var(--core-line); border-radius: 10px; background: var(--core-surface); }
+  .core-help.is-contents-open .core-help-toc { display: grid; }
+}
+/* Even spacing: single-page chapters no longer add a chapter-sized gap (visual check 02.10). */
+.core-help-toc { gap: 2px; }
+.core-help-chapter-title { margin-top: 12px; }
+/* Help review 02.10 (H-LOOK-02). The active page is outlined, not filled and never a coloured ribbon;
+   the quiet fill is for hover only. */
+.core-help-toc button { border: 1px solid transparent; }
+.core-help-toc button.is-active { background: transparent; box-shadow: none; border-color: var(--core-accent); color: var(--core-ink); }
+.core-help-toc button.is-active:hover { background: var(--core-selected-soft); }
+/* Small windows (H-LOOK-03): the contents drop down over the article with their own scroll,
+   instead of pushing the article below the fold. */
+@media (max-width: 1179px) {
+  .core-help { position: relative; }
+  .core-help-toc { position: absolute; top: 40px; left: 0; z-index: 20; width: min(300px, calc(100vw - 48px)); max-height: calc(100dvh - 200px); overflow-y: auto; box-shadow: 0 12px 32px rgb(0 0 0 / 16%); }
+}
+/* Code blocks look like they do in a note: one quiet bar with the language and Copy. The
+   language is a label here (no menu in Help) and is left out for plain text. */
+.core-help-body pre { margin: 12px 0; overflow: auto; border: 1px solid var(--core-border-subtle); border-radius: 8px; padding: 0; background: var(--core-background); color: var(--core-text); font: 13px/1.55 ui-monospace, SFMono-Regular, Consolas, monospace; white-space: pre-wrap; }
+.core-help-body pre code { display: block; padding: 10px 12px; font: inherit; background: transparent; border: 0; }
+.core-help-body .core-code-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 4px 6px 4px 12px; border-bottom: 1px solid var(--core-border-subtle); font: 11px/1.4 ui-sans-serif, system-ui, sans-serif; }
+.core-help-body .core-code-lang { border: 0; padding: 0; background: transparent; color: var(--core-muted); font: inherit; text-transform: uppercase; letter-spacing: .04em; pointer-events: none; }
+.core-help-body pre:is([data-lang=""], [data-lang="text"]) .core-code-lang { visibility: hidden; }
+.core-help-body .core-code-copy { border: 0; border-radius: 6px; padding: 3px 8px; background: transparent; color: var(--core-muted); font: inherit; cursor: pointer; }
+.core-help-body .core-code-copy:hover { background: var(--core-hover); color: var(--core-ink); }
+.core-help-body :not(pre) > code { padding: 1px 5px; border: 1px solid var(--core-border-subtle); border-radius: 4px; font: .88em ui-monospace, SFMono-Regular, Consolas, monospace; overflow-wrap: anywhere; }

@@ -1,0 +1,13 @@
+[env]
+# Copy this file to .cargo/config.toml (git-ignored) and fill in the real
+# values. Cargo applies [env] at build time; the Rust sources read these via
+# option_env!(...).
+#
+#   NOTIBLE_GOOGLE_CLIENT_SECRET      -> calendar client   (src-tauri/src/calendar_oauth.rs)
+#   NOTIBLE_SYNC_GOOGLE_CLIENT_SECRET -> sync-plugin client (src-tauri/src/plugin_oauth.rs)
+#
+# Both are Google OAuth "Desktop app" client secrets. They still ship inside a
+# distributed build — the mitigation is the narrow per-client scope
+# (calendar.readonly, drive.file), not secrecy. Never commit the real values.
+NOTIBLE_GOOGLE_CLIENT_SECRET = "GOCSPX-your-calendar-client-secret"
+NOTIBLE_SYNC_GOOGLE_CLIENT_SECRET = "GOCSPX-your-sync-client-secret"

@@ -1,0 +1,3090 @@
+/**
+ * Notible Tables — a small spreadsheet, kept as an ordinary workspace object.
+ *
+ * One ES module, no build step, no dependencies, no network. A table is one
+ * object (type "table"); its whole grid — columns and rows — lives in
+ * `props`, the same way a habit's whole year of ticks lives in one object's
+ * props. That means a table syncs, searches, exports and trashes like
+ * anything else, with no schema of its own for Core to know about.
+ *
+ * Registration is two pieces, same split as every other builtin-shaped
+ * plugin: `commands.register({ creates })` puts "Data table" in the "+" menu
+ * next to "New note", and `views.registerObjectTab` is what Core mounts when a
+ * table object is opened — by clicking it in the tree, or by clicking a
+ * `[[Table name]]` link in any note. `"table"` was added to Core's
+ * `OBJECT_TAB_TYPES` allowlist (packages/plugin-api) for exactly this; ONLY
+ * that allowlist changed in Core, everything else here is this plugin's own.
+ *
+ * The pure functions below are exported by name so `self-check.mjs` can run
+ * them under plain node; the plugin itself is the default export.
+ */
+
+// I18N (Hive #28): every UI string goes through t(); Polish is in
+// locales/pl.json (checked by scripts/plugin-locale-check.mjs). English until
+// onload() hands t over to Core's translator, which also follows a language
+// change. tr() only marks a module-level label that is passed to t() later.
+let t = (key, values) => (values ? key.replace(/\{(\w+)\}/g, (whole, name) => (name in values ? String(values[name]) : whole)) : key);
+const tr = (key) => key;
+
+export const TABLE_TYPE = "table";
+
+const NAME_LIMIT = 200;
+const CELL_LIMIT = 4000;
+const MAX_COLUMNS = 40;
+const MAX_ROWS = 2000;
+const MIN_COLUMN_WIDTH = 32;
+const DEFAULT_COLUMN_WIDTH = 140; // keep in step with .ntbl-th in the styles below
+const SPACER_WIDTH = 28; // .ntbl-th-spacer / .ntbl-td-handle
+const MAX_COLUMN_WIDTH = 640;
+
+/** The four cell kinds this version understands. Anything else in stored
+ * data (a future version's addition, a hand-edited import) is read as
+ * "text" rather than thrown away — see `parseTable`. */
+export const COLUMN_TYPES = ["text", "number", "date", "checkbox", "select", "link"];
+
+/** Presentation-only number formatting, held on a `number` column as
+ * `column.format`. The stored cell value stays a raw number — this only
+ * changes how it is shown, copied, exported and summed. */
+export function parseNumberFormat(raw) {
+  if (!raw || typeof raw !== "object") return undefined;
+  const style = ["plain", "currency", "percent"].includes(raw.style) ? raw.style : "plain";
+  const decimals = Number.isFinite(Number(raw.decimals)) ? Math.min(4, Math.max(0, Math.round(Number(raw.decimals)))) : 0;
+  const symbol = typeof raw.symbol === "string" ? raw.symbol.slice(0, 6) : "";
+  if (style === "plain" && decimals === 0 && !symbol) return undefined; // the default carries no format
+  return { style, decimals, ...(style === "currency" && symbol ? { symbol } : {}) };
+}
+
+/** Render one numeric value through a `column.format`. A non-number (an empty
+ * cell) passes straight through as "". `locale` defaults to the runtime's own
+ * (OS/browser) locale, same as a bare `toLocaleString()` — pass the app's own
+ * `context.i18n.locale` at display call sites so a column's grouping/decimal
+ * separators follow the app's language setting rather than the OS's. */
+export function formatNumber(value, format, locale) {
+  if (typeof value !== "number" || !Number.isFinite(value)) return "";
+  const decimals = format?.decimals ?? 0;
+  if (format?.style === "percent") return `${(value * 100).toFixed(decimals)}%`;
+  const body = value.toLocaleString(locale, { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
+  if (format?.style === "currency" && format.symbol) return `${format.symbol} ${body}`;
+  return body;
+}
+
+/** Parse text that may be using `locale`'s grouping/decimal separators (what
+ * `formatNumber` above just produced with the same `locale`) back into a
+ * plain number. NaN means "could not parse" — callers must not coerce that
+ * to 0, or a stray keystroke silently zeroes a cell. */
+export function parseFormattedNumber(raw, locale) {
+  if (typeof raw !== "string") return NaN;
+  const trimmed = raw.trim();
+  if (trimmed === "") return NaN;
+  const parts = new Intl.NumberFormat(locale).formatToParts(1234.5);
+  const group = parts.find((p) => p.type === "group")?.value ?? ",";
+  const decimal = parts.find((p) => p.type === "decimal")?.value ?? ".";
+  let normalized = trimmed.split(group).join("");
+  if (decimal !== ".") normalized = normalized.split(decimal).join(".");
+  normalized = normalized.replace(/[^0-9.\-]/g, "");
+  return normalized === "" || normalized === "-" ? NaN : Number(normalized);
+}
+
+// ------------------------------------------------------------ formula engine
+//
+// A cell whose text starts with "=" is a formula. Supported: + - * / ( ),
+// unary minus, cell refs (A1), ranges (A1:B3), and SUM / AVERAGE (AVG) /
+// COUNT / MIN / MAX. A1 is column A (first column), row 1 (first STORED row)
+// — sort and filter are view-only and never move a formula's targets.
+// Results are computed on every render and never stored; the "=" string is
+// all that lives in props. Errors surface in the cell as #REF! / #CYCLE! /
+// #DIV/0! / #ERR!.
+
+export const FORMULA_FUNCTIONS = ["SUM", "AVERAGE", "AVG", "COUNT", "MIN", "MAX"];
+
+/** Is this cell value a formula (leading "=" after optional whitespace)? */
+export function isFormula(value) {
+  return typeof value === "string" && value.trimStart().startsWith("=");
+}
+
+/** 0 -> "A", 25 -> "Z", 26 -> "AA". */
+export function columnLetter(index) {
+  let n = index;
+  let out = "";
+  do { out = String.fromCharCode(65 + (n % 26)) + out; n = Math.floor(n / 26) - 1; } while (n >= 0);
+  return out;
+}
+
+/** "A" -> 0, "Z" -> 25, "AA" -> 26; -1 for anything that is not A-Z letters. */
+export function columnIndexFromLetter(letters) {
+  if (!/^[A-Z]+$/.test(letters)) return -1;
+  let n = 0;
+  for (const ch of letters) n = n * 26 + (ch.charCodeAt(0) - 64);
+  return n - 1;
+}
+
+class FormulaError extends Error {}
+
+/** Tokenise a formula body (the part after "="). */
+function tokenizeFormula(src) {
+  const tokens = [];
+  let i = 0;
+  while (i < src.length) {
+    const ch = src[i];
+    if (ch === " " || ch === "\t" || ch === "\n") { i += 1; continue; }
+    if ("+-*/(),:".includes(ch)) { tokens.push({ t: ch }); i += 1; continue; }
+    if (/[0-9.]/.test(ch)) {
+      let j = i + 1;
+      while (j < src.length && /[0-9.]/.test(src[j])) j += 1;
+      const num = Number(src.slice(i, j));
+      if (!Number.isFinite(num)) throw new FormulaError("#ERR!");
+      tokens.push({ t: "num", v: num });
+      i = j;
+      continue;
+    }
+    if (/[A-Za-z]/.test(ch)) {
+      let j = i + 1;
+      while (j < src.length && /[A-Za-z0-9]/.test(src[j])) j += 1;
+      const word = src.slice(i, j);
+      const ref = /^([A-Za-z]+)([0-9]+)$/.exec(word);
+      if (ref) tokens.push({ t: "ref", col: columnIndexFromLetter(ref[1].toUpperCase()), row: Number(ref[2]) - 1 });
+      else tokens.push({ t: "name", v: word.toUpperCase() });
+      i = j;
+      continue;
+    }
+    throw new FormulaError("#ERR!");
+  }
+  return tokens;
+}
+
+/** Recursive-descent parse into a tiny AST. `getCell(col,row)` is called
+ * lazily during eval and must return a number (or throw a FormulaError). */
+function parseFormulaTokens(tokens) {
+  let pos = 0;
+  const peek = () => tokens[pos];
+  const eat = (t) => { if (!tokens[pos] || (t && tokens[pos].t !== t)) throw new FormulaError("#ERR!"); return tokens[pos++]; };
+
+  function parseExpr() {
+    let node = parseTerm();
+    while (peek() && (peek().t === "+" || peek().t === "-")) {
+      const op = eat().t;
+      node = { k: "bin", op, l: node, r: parseTerm() };
+    }
+    return node;
+  }
+  function parseTerm() {
+    let node = parseUnary();
+    while (peek() && (peek().t === "*" || peek().t === "/")) {
+      const op = eat().t;
+      node = { k: "bin", op, l: node, r: parseUnary() };
+    }
+    return node;
+  }
+  function parseUnary() {
+    if (peek() && peek().t === "-") { eat(); return { k: "neg", v: parseUnary() }; }
+    if (peek() && peek().t === "+") { eat(); return parseUnary(); }
+    return parsePrimary();
+  }
+  function parsePrimary() {
+    const tk = peek();
+    if (!tk) throw new FormulaError("#ERR!");
+    if (tk.t === "num") { eat(); return { k: "num", v: tk.v }; }
+    if (tk.t === "(") { eat("("); const e = parseExpr(); eat(")"); return e; }
+    if (tk.t === "ref") {
+      eat();
+      if (peek() && peek().t === ":") { eat(":"); const end = eat("ref"); return { k: "range", a: tk, b: end }; }
+      return { k: "ref", ref: tk };
+    }
+    if (tk.t === "name") {
+      eat();
+      if (!FORMULA_FUNCTIONS.includes(tk.v)) throw new FormulaError("#ERR!");
+      eat("(");
+      const args = [];
+      if (peek() && peek().t !== ")") {
+        args.push(parseArg());
+        while (peek() && peek().t === ",") { eat(","); args.push(parseArg()); }
+      }
+      eat(")");
+      return { k: "call", name: tk.v, args };
+    }
+    throw new FormulaError("#ERR!");
+  }
+  function parseArg() {
+    // a function argument is either a range or a full expression
+    if (peek() && peek().t === "ref" && tokens[pos + 1] && tokens[pos + 1].t === ":") {
+      const a = eat("ref"); eat(":"); const b = eat("ref");
+      return { k: "range", a, b };
+    }
+    return parseExpr();
+  }
+
+  const ast = parseExpr();
+  if (pos !== tokens.length) throw new FormulaError("#ERR!");
+  return ast;
+}
+
+/** Evaluate a parsed formula. `getNumber(col,row)` resolves one cell to a
+ * finite number (0 for blank/non-numeric) or throws FormulaError("#REF!"). */
+function evalFormulaAst(node, getNumber) {
+  const rangeValues = (a, b) => {
+    if (a.col < 0 || b.col < 0 || a.row < 0 || b.row < 0) throw new FormulaError("#REF!");
+    const out = [];
+    const [c0, c1] = [Math.min(a.col, b.col), Math.max(a.col, b.col)];
+    const [r0, r1] = [Math.min(a.row, b.row), Math.max(a.row, b.row)];
+    for (let c = c0; c <= c1; c += 1) for (let r = r0; r <= r1; r += 1) out.push(getNumber(c, r));
+    return out;
+  };
+  const flatArgs = (args) => args.flatMap((arg) => (arg.k === "range" ? rangeValues(arg.a, arg.b) : [evalFormulaAst(arg, getNumber)]));
+  switch (node.k) {
+    case "num": return node.v;
+    case "neg": return -evalFormulaAst(node.v, getNumber);
+    case "ref":
+      if (node.ref.col < 0 || node.ref.row < 0) throw new FormulaError("#REF!");
+      return getNumber(node.ref.col, node.ref.row);
+    case "range": throw new FormulaError("#ERR!"); // a bare range outside a function is meaningless
+    case "bin": {
+      const l = evalFormulaAst(node.l, getNumber);
+      const r = evalFormulaAst(node.r, getNumber);
+      if (node.op === "+") return l + r;
+      if (node.op === "-") return l - r;
+      if (node.op === "*") return l * r;
+      if (r === 0) throw new FormulaError("#DIV/0!");
+      return l / r;
+    }
+    case "call": {
+      const vals = flatArgs(node.args);
+      if (node.name === "COUNT") return vals.length;
+      if (node.name === "SUM") return vals.reduce((a, b) => a + b, 0);
+      if (node.name === "AVERAGE" || node.name === "AVG") return vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : 0;
+      if (node.name === "MIN") return vals.length ? Math.min(...vals) : 0;
+      if (node.name === "MAX") return vals.length ? Math.max(...vals) : 0;
+      throw new FormulaError("#ERR!");
+    }
+    default: throw new FormulaError("#ERR!");
+  }
+}
+
+/** Coerce any stored cell value to the number a formula should see. */
+function cellAsNumber(value) {
+  if (typeof value === "number") return Number.isFinite(value) ? value : 0;
+  if (value === true) return 1;
+  if (value === false || value == null || value === "") return 0;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : 0;
+}
+
+/**
+ * Compute every formula cell in `table`. Returns a
+ * `Map<"rowId:colId", number | "#REF!" | "#CYCLE!" | "#DIV/0!" | "#ERR!">`.
+ * Non-formula cells are absent. Cycle-safe and memoised.
+ */
+export function computeFormulas(table) {
+  const results = new Map();
+  const asts = new Map();
+  const visiting = new Set();
+
+  const parseAt = (key, src) => {
+    if (asts.has(key)) return asts.get(key);
+    let ast = null;
+    try { ast = parseFormulaTokens(tokenizeFormula(src.trimStart().slice(1))); }
+    catch { ast = "#ERR!"; }
+    asts.set(key, ast);
+    return ast;
+  };
+
+  const valueAt = (colIndex, rowIndex) => {
+    const column = table.columns[colIndex];
+    const row = table.rows[rowIndex];
+    if (!column || !row) throw new FormulaError("#REF!");
+    const raw = row.cells[column.id];
+    if (!isFormula(raw)) return cellAsNumber(raw);
+    const key = `${row.id}:${column.id}`;
+    if (results.has(key)) {
+      const cached = results.get(key);
+      if (typeof cached === "string") throw new FormulaError(cached);
+      return cached;
+    }
+    if (visiting.has(key)) throw new FormulaError("#CYCLE!");
+    visiting.add(key);
+    let out;
+    try {
+      const ast = parseAt(key, raw);
+      out = ast === "#ERR!" ? "#ERR!" : evalFormulaAst(ast, valueAt);
+      if (typeof out === "number" && !Number.isFinite(out)) out = "#ERR!";
+    } catch (error) {
+      out = error instanceof FormulaError ? error.message : "#ERR!";
+    } finally {
+      visiting.delete(key);
+    }
+    results.set(key, out);
+    if (typeof out === "string") throw new FormulaError(out);
+    return out;
+  };
+
+  for (const [rowIndex, row] of table.rows.entries()) {
+    for (const [colIndex, column] of table.columns.entries()) {
+      if (!isFormula(row.cells[column.id])) continue;
+      const key = `${row.id}:${column.id}`;
+      if (results.has(key)) continue;
+      try { valueAt(colIndex, rowIndex); }
+      catch (error) { results.set(key, error instanceof FormulaError ? error.message : "#ERR!"); }
+    }
+  }
+  return results;
+}
+
+/** A shallow copy of `table` with every formula cell replaced by its
+ * computed value (or its error string) — the view everything except the
+ * cell editor works from. */
+export function resolveFormulas(table) {
+  const computed = computeFormulas(table);
+  if (computed.size === 0) return table;
+  return {
+    ...table,
+    rows: table.rows.map((row) => ({
+      ...row,
+      cells: Object.fromEntries(table.columns.map((column) => {
+        const raw = row.cells[column.id];
+        return [column.id, isFormula(raw) ? (computed.get(`${row.id}:${column.id}`) ?? "#ERR!") : raw];
+      })),
+    })),
+  };
+}
+
+/** The same six pens the note editor's highlighter already offers
+ * (HIGHLIGHT_COLOURS in coreMarkdownMarks.ts) — duplicated by value, not by
+ * import: a plugin is a standalone ES module and cannot reach into
+ * src/core. Keeping the exact same six names is what makes a table's
+ * coloring read as "the same feature" as the editor's, not a lookalike. */
+export const HIGHLIGHT_COLOURS = ["yellow", "green", "blue", "pink", "purple", "orange"];
+
+function randomId() {
+  // Not a UUID library: this only has to be unique inside one table's own
+  // column/row arrays, and crypto.randomUUID is not guaranteed in every
+  // WebView2 build this plugin might run under.
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 9)}`;
+}
+
+function clampText(value, limit) {
+  return typeof value === "string" ? value.slice(0, limit) : "";
+}
+
+/** The value an empty cell of `type` reads as — never `undefined`, so a cell
+ * a column's type was just switched to always has something to render and
+ * to compare. */
+export function defaultCellValue(type) {
+  if (type === "number") return "";
+  if (type === "checkbox") return false;
+  return "";
+}
+
+/** One column, normalised. An unrecognised `type` (older export, hand-edited
+ * JSON, a future version's addition) degrades to "text" — the failure mode
+ * of a broken column type is "shows as text", not "table won't open". */
+function parseColumn(raw) {
+  const type = COLUMN_TYPES.includes(raw?.type) ? raw.type : "text";
+  const options = type === "select" && Array.isArray(raw?.options)
+    ? raw.options.filter((option) => typeof option === "string" && option.trim()).slice(0, 50)
+    : undefined;
+  const format = type === "number" ? parseNumberFormat(raw?.format) : undefined;
+  const rawWidth = Number(raw?.width);
+  const width = Number.isFinite(rawWidth)
+    ? Math.round(Math.min(MAX_COLUMN_WIDTH, Math.max(MIN_COLUMN_WIDTH, rawWidth)))
+    : undefined;
+  return {
+    id: typeof raw?.id === "string" && raw.id ? raw.id : randomId(),
+    name: clampText(raw?.name, NAME_LIMIT) || "Column",
+    type,
+    wrap: raw?.wrap === true,
+    ...(options ? { options } : {}),
+    ...(format ? { format } : {}),
+    ...(width ? { width } : {}),
+  };
+}
+
+function parseCellValue(value, type) {
+  if (type === "checkbox") return value === true;
+  // A formula string survives in any text/number cell — it is evaluated at
+  // render, never stored as its result.
+  if ((type === "text" || type === "number") && isFormula(value)) return clampText(value, CELL_LIMIT);
+  if (type === "number") return typeof value === "number" && Number.isFinite(value) ? value : (value === "" || value == null ? "" : Number(value) || 0);
+  return clampText(typeof value === "string" ? value : value == null ? "" : String(value), CELL_LIMIT);
+}
+
+function parseRow(raw, columns) {
+  const cells = {};
+  for (const column of columns) {
+    cells[column.id] = raw?.cells && typeof raw.cells === "object"
+      ? parseCellValue(raw.cells[column.id], column.type)
+      : defaultCellValue(column.type);
+  }
+  return { id: typeof raw?.id === "string" && raw.id ? raw.id : randomId(), cells };
+}
+
+/** `table.styles`, tolerating anything stored props may contain — same
+ * trust boundary as every other parse function here. A malformed entry (bad
+ * key shape, unrecognised color, neither flag set) is dropped rather than
+ * kept, so a hand-edited or older-version import degrades to "no style on
+ * that cell" instead of failing the whole table. */
+function parseStyles(raw) {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
+  const styles = {};
+  for (const [key, value] of Object.entries(raw)) {
+    if (typeof key !== "string" || !key.includes(":")) continue;
+    const bold = value?.bold === true;
+    const color = HIGHLIGHT_COLOURS.includes(value?.color) ? value.color : undefined;
+    if (!bold && !color) continue;
+    styles[key] = { ...(bold ? { bold: true } : {}), ...(color ? { color } : {}) };
+  }
+  return styles;
+}
+
+/** `table.merges`, tolerating anything stored props may contain. A merge
+ * that is out of bounds, has fewer than 2 cells, or overlaps one already
+ * accepted is dropped — the same "degrade, don't throw" rule every other
+ * parse function in this file follows. Overlap is checked against merges
+ * ACCEPTED so far, in stored order, so the result never depends on which
+ * malformed entry happened to come first. */
+function parseMerges(raw, columnCount, rowCount) {
+  if (!Array.isArray(raw)) return [];
+  const accepted = [];
+  for (const item of raw) {
+    const startRowIndex = Number(item?.startRowIndex);
+    const startColIndex = Number(item?.startColIndex);
+    const rowSpan = Number(item?.rowSpan);
+    const colSpan = Number(item?.colSpan);
+    if (![startRowIndex, startColIndex, rowSpan, colSpan].every(Number.isInteger)) continue;
+    if (rowSpan < 1 || colSpan < 1 || rowSpan * colSpan < 2) continue;
+    if (startRowIndex < 0 || startColIndex < 0) continue;
+    if (startRowIndex + rowSpan > rowCount || startColIndex + colSpan > columnCount) continue;
+    const overlapsAccepted = accepted.some((existing) => rectanglesOverlap(
+      startRowIndex, startColIndex, rowSpan, colSpan,
+      existing.startRowIndex, existing.startColIndex, existing.rowSpan, existing.colSpan,
+    ));
+    if (overlapsAccepted) continue;
+    accepted.push({ startRowIndex, startColIndex, rowSpan, colSpan });
+  }
+  return accepted;
+}
+
+function rectanglesOverlap(aRow, aCol, aRowSpan, aColSpan, bRow, bCol, bRowSpan, bColSpan) {
+  return !(aRow + aRowSpan <= bRow || bRow + bRowSpan <= aRow || aCol + aColSpan <= bCol || bCol + bColSpan <= aCol);
+}
+
+/** Read one object into a table, tolerating anything its props may contain —
+ * same trust boundary as every other plugin reading from `props`: it is a
+ * string from the database, fed by import, by sync, by another machine's
+ * newer version of this plugin. A broken table degrades to an empty grid
+ * instead of throwing inside a render. */
+export function parseTable(object) {
+  let parsed = null;
+  try {
+    parsed = JSON.parse(object?.props || "{}");
+  } catch {
+    parsed = null;
+  }
+  const columns = Array.isArray(parsed?.columns) ? parsed.columns.slice(0, MAX_COLUMNS).map(parseColumn) : [];
+  const rows = Array.isArray(parsed?.rows) ? parsed.rows.slice(0, MAX_ROWS).map((row) => parseRow(row, columns)) : [];
+  return {
+    id: object?.id ?? null,
+    name: typeof object?.title === "string" ? object.title.slice(0, NAME_LIMIT) : "",
+    columns,
+    rows,
+    styles: parseStyles(parsed?.styles),
+    merges: parseMerges(parsed?.merges, columns.length, rows.length),
+    lockWidths: parsed?.lockWidths === true,
+  };
+}
+
+/** Columns and rows back into `props`. Cells for a column that no longer
+ * exists are dropped by `parseRow` on the next read, so nothing here has to
+ * clean them up on write. */
+export function serializeTable(table) {
+  return JSON.stringify({
+    columns: table.columns.map(({ id, name, type, options, format, wrap, width }) => ({
+      id, name, type,
+      ...(options ? { options } : {}),
+      ...(format ? { format } : {}),
+      ...(wrap ? { wrap: true } : {}),
+      ...(width ? { width } : {}),
+    })),
+    rows: table.rows.map((row) => ({ id: row.id, cells: row.cells })),
+    ...(Object.keys(table.styles ?? {}).length ? { styles: table.styles } : {}),
+    ...((table.merges ?? []).length ? { merges: table.merges } : {}),
+    ...(table.lockWidths ? { lockWidths: true } : {}),
+  });
+}
+
+/**
+ * E14B-FORMAT (Hive #2): a table embedded in a note is a ```notible-table
+ * fence. Line 1 is the header (everything `serializeTable` writes except
+ * `rows`, plus `"v":1`), then one JSON line per row. JSON escapes newlines, so
+ * no line can start with ``` and close the fence early; cell text stays plain
+ * so note search finds it.
+ */
+export const EMBED_LANGUAGE = "notible-table";
+const EMBED_VERSION = 1;
+
+export function serializeEmbedded(table) {
+  const { rows, ...header } = JSON.parse(serializeTable(table));
+  return [JSON.stringify({ v: EMBED_VERSION, ...header }), ...rows.map((row) => JSON.stringify(row))].join("\n");
+}
+
+/** Strict, unlike `parseTable`: a block someone hand-edited into something
+ * unreadable must not come back as a shorter table that the next edit saves
+ * over the original. Any bad line, an unknown version or a table over the
+ * limits returns `error`, and the grid stays read-only. */
+export function parseEmbedded(source) {
+  try {
+    const lines = String(source ?? "").split("\n").filter((line) => line.trim());
+    if (!lines.length) throw new Error("the table is empty");
+    const parsed = lines.map((line) => JSON.parse(line));
+    if (parsed.some((value) => !value || typeof value !== "object" || Array.isArray(value))) throw new Error("a line is not a table entry");
+    const { v, ...header } = parsed[0];
+    if (v !== EMBED_VERSION) throw new Error("this table was written by a newer version of Notible Tables");
+    const rows = parsed.slice(1);
+    if (rows.length > MAX_ROWS || (Array.isArray(header.columns) && header.columns.length > MAX_COLUMNS)) throw new Error("the table is over the size limit");
+    return { table: parseTable({ props: JSON.stringify({ ...header, rows }) }), error: null };
+  } catch (cause) {
+    return { table: parseTable({ props: "{}" }), error: String(cause?.message ?? cause) };
+  }
+}
+
+/** Append a column with a fresh id, and give every existing row the new
+ * column's default value — a cell no row has yet is still there to fill in,
+ * not a gap that only appears once someone types into it. */
+export function addColumn(table, { name, type, options } = {}) {
+  if (table.columns.length >= MAX_COLUMNS) return table;
+  const column = parseColumn({ name: name || t("Column {n}", { n: table.columns.length + 1 }), type, options });
+  return {
+    ...table,
+    columns: [...table.columns, column],
+    rows: table.rows.map((row) => ({ ...row, cells: { ...row.cells, [column.id]: defaultCellValue(column.type) } })),
+  };
+}
+
+/** Patch one column (rename, change type, change select options). Changing
+ * `type` re-reads every row's cell for this column through the new type's
+ * parser, so a text column full of digits becomes real numbers the moment
+ * you switch it to Number, rather than showing NaN until each cell is
+ * retyped by hand. */
+export function updateColumn(table, columnId, patch) {
+  const index = table.columns.findIndex((column) => column.id === columnId);
+  if (index === -1) return table;
+  const next = parseColumn({ ...table.columns[index], ...patch, id: columnId });
+  const columns = [...table.columns];
+  columns[index] = next;
+  const typeChanged = next.type !== table.columns[index].type;
+  return {
+    ...table,
+    columns,
+    rows: typeChanged
+      ? table.rows.map((row) => ({ ...row, cells: { ...row.cells, [columnId]: parseCellValue(row.cells[columnId], next.type) } }))
+      : table.rows,
+  };
+}
+
+/** Adjust `merges` for the removal of the row/column at `removedIndex` on
+ * `axis` ("row" or "col"). A merge whose span COVERED the removed line loses
+ * its identity as a rectangle and is dropped; a merge entirely AFTER it
+ * shifts its start index down by one to stay pointed at the same cells;
+ * a merge entirely BEFORE it is untouched. Without this, a merge's
+ * `startRowIndex`/`startColIndex` goes stale the moment a row/column above
+ * or left of it is removed, and the stale index gets persisted on save. */
+function adjustMergesForRemoval(merges, axis, removedIndex) {
+  const startKey = axis === "row" ? "startRowIndex" : "startColIndex";
+  const spanKey = axis === "row" ? "rowSpan" : "colSpan";
+  const next = [];
+  for (const merge of merges) {
+    const start = merge[startKey];
+    const span = merge[spanKey];
+    if (removedIndex >= start && removedIndex < start + span) continue; // dropped
+    if (removedIndex < start) next.push({ ...merge, [startKey]: start - 1 });
+    else next.push(merge);
+  }
+  return next;
+}
+
+/** Whether any row has a non-blank value in this column — used to decide if
+ * deleting it needs a confirm-arm click, since there is no undo. */
+export function columnHasData(table, columnId) {
+  return table.rows.some((row) => { const v = row.cells[columnId]; return v !== undefined && v !== null && v !== ""; });
+}
+
+/** Same idea as `columnHasData`, for one row. */
+export function rowHasData(row) {
+  return Object.values(row.cells ?? {}).some((v) => v !== undefined && v !== null && v !== "");
+}
+
+/** Drop a column and every row's value for it. */
+export function removeColumn(table, columnId) {
+  const columnIndex = table.columns.findIndex((column) => column.id === columnId);
+  return {
+    ...table,
+    columns: table.columns.filter((column) => column.id !== columnId),
+    rows: table.rows.map((row) => {
+      const cells = { ...row.cells };
+      delete cells[columnId];
+      return { ...row, cells };
+    }),
+    merges: columnIndex === -1 ? (table.merges ?? []) : adjustMergesForRemoval(table.merges ?? [], "col", columnIndex),
+  };
+}
+
+/** Move one column next to another by dragging its header. A no-op while any
+ * merge exists: a merge's `startColIndex`/`colSpan` is a range in STORAGE
+ * order (see `parseMerges`), and reordering columns can pull a merge's span
+ * apart in ways a simple index shift (unlike `adjustMergesForRemoval`'s
+ * single before/after case) cannot generally repair — so, same "degrade,
+ * don't produce a stale merge" rule as everywhere else here, reorder simply
+ * declines while merges are in play rather than risk corrupting one. */
+export function reorderColumn(table, draggedColumnId, targetColumnId) {
+  if (draggedColumnId === targetColumnId) return table;
+  if ((table.merges ?? []).length > 0) return table;
+  const fromIndex = table.columns.findIndex((column) => column.id === draggedColumnId);
+  const toIndex = table.columns.findIndex((column) => column.id === targetColumnId);
+  if (fromIndex === -1 || toIndex === -1) return table;
+  const columns = [...table.columns];
+  const [moved] = columns.splice(fromIndex, 1);
+  columns.splice(toIndex, 0, moved);
+  return { ...table, columns };
+}
+
+/** Adjust `merges` for a row/column newly INSERTED at `insertedIndex` on
+ * `axis` — the mirror of `adjustMergesForRemoval`. A merge starting at or
+ * after the insertion point shifts down by one to keep pointing at the same
+ * cells; a merge whose span already COVERED the insertion point grows by one
+ * instead, so a row/column added in the middle of a merged block stays part
+ * of it rather than splitting it. */
+function adjustMergesForInsertion(merges, axis, insertedIndex) {
+  const startKey = axis === "row" ? "startRowIndex" : "startColIndex";
+  const spanKey = axis === "row" ? "rowSpan" : "colSpan";
+  return merges.map((merge) => {
+    const start = merge[startKey];
+    const span = merge[spanKey];
+    if (insertedIndex <= start) return { ...merge, [startKey]: start + 1 };
+    if (insertedIndex < start + span) return { ...merge, [spanKey]: span + 1 };
+    return merge;
+  });
+}
+
+/** Insert a new column next to `columnId` — `position` is "before" or
+ * "after" — with a fresh id and every existing row given the new column's
+ * default value, same as `addColumn` but at a chosen spot instead of the
+ * end. */
+export function insertColumnAt(table, columnId, position, spec = {}) {
+  if (table.columns.length >= MAX_COLUMNS) return table;
+  const anchorIndex = table.columns.findIndex((candidate) => candidate.id === columnId);
+  if (anchorIndex === -1) return table;
+  const insertAt = position === "before" ? anchorIndex : anchorIndex + 1;
+  const column = parseColumn({ name: spec.name || `Column ${table.columns.length + 1}`, type: spec.type, options: spec.options });
+  const columns = [...table.columns];
+  columns.splice(insertAt, 0, column);
+  return {
+    ...table,
+    columns,
+    rows: table.rows.map((row) => ({ ...row, cells: { ...row.cells, [column.id]: defaultCellValue(column.type) } })),
+    merges: adjustMergesForInsertion(table.merges ?? [], "col", insertAt),
+  };
+}
+
+/** Move one row next to another by dragging its handle. Same merges guard as
+ * `reorderColumn`, for the same reason. */
+export function reorderRow(table, draggedRowId, targetRowId) {
+  if (draggedRowId === targetRowId) return table;
+  if ((table.merges ?? []).length > 0) return table;
+  const fromIndex = table.rows.findIndex((row) => row.id === draggedRowId);
+  const toIndex = table.rows.findIndex((row) => row.id === targetRowId);
+  if (fromIndex === -1 || toIndex === -1) return table;
+  const rows = [...table.rows];
+  const [moved] = rows.splice(fromIndex, 1);
+  rows.splice(toIndex, 0, moved);
+  return { ...table, rows };
+}
+
+/** Append one empty row, one default cell per existing column. */
+export function addRow(table) {
+  if (table.rows.length >= MAX_ROWS) return table;
+  const cells = {};
+  for (const column of table.columns) cells[column.id] = defaultCellValue(column.type);
+  return { ...table, rows: [...table.rows, { id: randomId(), cells }] };
+}
+
+/** Insert a new empty row next to `rowId` — `position` is "above" or
+ * "below" — one default cell per existing column, same as `addRow` but at a
+ * chosen spot instead of the end. */
+export function insertRow(table, rowId, position) {
+  if (table.rows.length >= MAX_ROWS) return table;
+  const anchorIndex = table.rows.findIndex((row) => row.id === rowId);
+  if (anchorIndex === -1) return table;
+  const insertAt = position === "above" ? anchorIndex : anchorIndex + 1;
+  const cells = {};
+  for (const column of table.columns) cells[column.id] = defaultCellValue(column.type);
+  const rows = [...table.rows];
+  rows.splice(insertAt, 0, { id: randomId(), cells });
+  return { ...table, rows, merges: adjustMergesForInsertion(table.merges ?? [], "row", insertAt) };
+}
+
+/** Insert a copy of one row immediately after it, with a fresh id — the
+ * spreadsheet "duplicate row" action. */
+export function duplicateRow(table, rowId) {
+  if (table.rows.length >= MAX_ROWS) return table;
+  const index = table.rows.findIndex((row) => row.id === rowId);
+  if (index === -1) return table;
+  const copy = { id: randomId(), cells: { ...table.rows[index].cells } };
+  const rows = [...table.rows];
+  rows.splice(index + 1, 0, copy);
+  return { ...table, rows, merges: adjustMergesForInsertion(table.merges ?? [], "row", index + 1) };
+}
+
+export function removeRow(table, rowId) {
+  const rowIndex = table.rows.findIndex((row) => row.id === rowId);
+  return {
+    ...table,
+    rows: table.rows.filter((row) => row.id !== rowId),
+    merges: rowIndex === -1 ? (table.merges ?? []) : adjustMergesForRemoval(table.merges ?? [], "row", rowIndex),
+  };
+}
+
+/** A fresh 3×3 grid of text columns — what "New data table" actually hands
+ * back, rather than the zero-column empty state, which is the right shape
+ * once a table already has data but reads as a dead end the first time
+ * anyone opens a table they just created. */
+export function blankTable(table) {
+  let next = table;
+  for (let i = 0; i < 3; i++) next = addColumn(next, { type: "text" });
+  for (let i = 0; i < 3; i++) next = addRow(next);
+  return next;
+}
+
+export function setCell(table, rowId, columnId, value) {
+  const column = table.columns.find((candidate) => candidate.id === columnId);
+  if (!column) return table;
+  const parsed = parseCellValue(value, column.type);
+  return {
+    ...table,
+    rows: table.rows.map((row) => row.id === rowId ? { ...row, cells: { ...row.cells, [columnId]: parsed } } : row),
+  };
+}
+
+/** Patch (or add) one cell's style, dropping the entry entirely once it
+ * carries no flag — the sparse-map convention `filters`/`table.styles`
+ * both follow: absent means "nothing set", never an empty object. */
+export function setCellStyle(table, rowId, columnId, patch) {
+  const key = `${rowId}:${columnId}`;
+  const current = (table.styles ?? {})[key] ?? {};
+  const next = { ...current, ...patch };
+  const bold = next.bold === true;
+  const color = HIGHLIGHT_COLOURS.includes(next.color) ? next.color : undefined;
+  const styles = { ...(table.styles ?? {}) };
+  if (!bold && !color) delete styles[key];
+  else styles[key] = { ...(bold ? { bold: true } : {}), ...(color ? { color } : {}) };
+  return { ...table, styles };
+}
+
+export function clearCellStyle(table, rowId, columnId) {
+  const styles = { ...(table.styles ?? {}) };
+  delete styles[`${rowId}:${columnId}`];
+  return { ...table, styles };
+}
+
+/** Apply the same patch to every cell in a rectangular range — one
+ * `store.apply` in the caller covers the whole selection, this just folds
+ * `setCellStyle` over it. */
+export function setRangeStyle(table, range, patch) {
+  let next = table;
+  for (const rowId of range.rowIds) {
+    for (const columnId of range.columnIds) next = setCellStyle(next, rowId, columnId, patch);
+  }
+  return next;
+}
+
+export function clearRangeStyle(table, range) {
+  let next = table;
+  for (const rowId of range.rowIds) {
+    for (const columnId of range.columnIds) next = clearCellStyle(next, rowId, columnId);
+  }
+  return next;
+}
+
+/** Merge is unavailable while a sort or filter is active: `startRowIndex`/
+ * `startColIndex` are indices into `table.rows`/`table.columns` in STORAGE
+ * order, and that only matches what is on screen when the view is
+ * unsorted and unfiltered — see the design doc's Data model section. The
+ * UI is expected to disable the "Merge cells" action in that state, but
+ * this no-op is the actual guarantee: nothing calling this function can
+ * produce a merge whose indices lie about what is rendered. */
+export function mergeCells(table, range, sort, filters) {
+  if (sort) return table;
+  if (Object.values(filters ?? {}).some((value) => value !== undefined && value !== null && value !== "")) return table;
+  const rowIndexes = range.rowIds.map((id) => table.rows.findIndex((row) => row.id === id));
+  const colIndexes = range.columnIds.map((id) => table.columns.findIndex((column) => column.id === id));
+  if (rowIndexes.includes(-1) || colIndexes.includes(-1)) return table;
+  const startRowIndex = Math.min(...rowIndexes);
+  const startColIndex = Math.min(...colIndexes);
+  const rowSpan = rowIndexes.length;
+  const colSpan = colIndexes.length;
+  if (rowSpan * colSpan < 2) return table;
+  const existing = table.merges ?? [];
+  const overlaps = existing.some((m) => rectanglesOverlap(startRowIndex, startColIndex, rowSpan, colSpan, m.startRowIndex, m.startColIndex, m.rowSpan, m.colSpan));
+  if (overlaps) return table;
+  return { ...table, merges: [...existing, { startRowIndex, startColIndex, rowSpan, colSpan }] };
+}
+
+export function unmergeCells(table, startRowIndex, startColIndex) {
+  return { ...table, merges: (table.merges ?? []).filter((m) => !(m.startRowIndex === startRowIndex && m.startColIndex === startColIndex)) };
+}
+
+/** How one cell's value reads as plain text — shared by clipboard copy and
+ * CSV export, which format cells the same way. Checkbox becomes TRUE/FALSE
+ * (Excel's own convention for a boolean cell) rather than "true"/"false" or
+ * a checkmark glyph a TSV/CSV reader would not recognise as boolean. */
+function formatCellForCopy(value, column, resolveTitle) {
+  const type = typeof column === "string" ? column : column?.type; // tolerate the old (value, type) callers
+  if (type === "checkbox") return value === true ? "TRUE" : "FALSE";
+  if (type === "link") return typeof value === "string" && value ? (resolveTitle?.(value) ?? value) : "";
+  if (type === "number" && column?.format && typeof value === "number") return formatNumber(value, column.format);
+  return value == null ? "" : String(value);
+}
+
+export function cellsToTsv(table, range, resolveTitle) {
+  const columns = range.columnIds.map((id) => table.columns.find((column) => column.id === id)).filter(Boolean);
+  const rows = range.rowIds.map((id) => table.rows.find((row) => row.id === id)).filter(Boolean);
+  return rows.map((row) => columns.map((column) => formatCellForCopy(row.cells[column.id], column, resolveTitle)).join("\t")).join("\n");
+}
+
+/** Writes a pasted TSV block (e.g. copied from Excel) starting at the
+ * range's first row/column, growing the table with new rows/columns when the
+ * block runs past its current edge — up to MAX_ROWS/MAX_COLUMNS, the same
+ * cap `addRow`/`addColumn` already enforce, so this never bypasses them.
+ *
+ * Growth only happens when the view is unsorted and unfiltered: `sort`
+ * would mean the "first row" the paste started on is in DISPLAY order, not
+ * STORAGE order, so appending rows at the end of storage would silently
+ * land the new cells somewhere other than where the paste visually began —
+ * the same view-constrained guard `mergeCells` already applies, for the same
+ * reason. Sorted/filtered stays clamped to what already exists, same as
+ * before. */
+export function applyTsvPaste(table, range, tsv, sort, filters) {
+  const grid = tsv.replace(/\r\n/g, "\n").split("\n").map((line) => line.split("\t"));
+  // A copy from Excel/Sheets ends in a newline, which becomes one trailing
+  // empty "row" here — without trimming it, every paste would grow the
+  // table by one extra blank row it never showed the user.
+  while (grid.length > 1 && grid[grid.length - 1].length === 1 && grid[grid.length - 1][0] === "") grid.pop();
+  const startRowIndex = table.rows.findIndex((row) => row.id === range.rowIds[0]);
+  const startColIndex = table.columns.findIndex((column) => column.id === range.columnIds[0]);
+  if (startRowIndex === -1 || startColIndex === -1) return table;
+
+  let next = table;
+  const viewConstrained = Boolean(sort) || Object.values(filters ?? {}).some((value) => value !== undefined && value !== null && value !== "");
+  if (!viewConstrained) {
+    const neededRows = startRowIndex + grid.length;
+    while (next.rows.length < neededRows && next.rows.length < MAX_ROWS) next = addRow(next);
+    const neededColumns = grid.reduce((max, line) => Math.max(max, startColIndex + line.length), 0);
+    while (next.columns.length < neededColumns && next.columns.length < MAX_COLUMNS) next = addColumn(next);
+  }
+
+  for (let r = 0; r < grid.length; r++) {
+    const targetRow = next.rows[startRowIndex + r];
+    if (!targetRow) break;
+    for (let c = 0; c < grid[r].length; c++) {
+      const targetColumn = next.columns[startColIndex + c];
+      if (!targetColumn) break;
+      next = setCell(next, targetRow.id, targetColumn.id, grid[r][c]);
+    }
+  }
+  return next;
+}
+
+export function clearRangeCells(table, range) {
+  let next = table;
+  for (const rowId of range.rowIds) {
+    for (const columnId of range.columnIds) {
+      const column = next.columns.find((candidate) => candidate.id === columnId);
+      if (column) next = setCell(next, rowId, columnId, defaultCellValue(column.type));
+    }
+  }
+  return next;
+}
+
+/** RFC-4180-ish quoting: a field containing a comma, quote or newline is
+ * wrapped in quotes, with quotes doubled inside. Not a general CSV library —
+ * this table only ever writes fields it built itself from typed cell
+ * values, never re-parses CSV, so this one direction is all it needs. */
+function csvField(value) {
+  const stringValue = String(value ?? "");
+  return /[",\n]/.test(stringValue) ? `"${stringValue.replace(/"/g, '""')}"` : stringValue;
+}
+
+/** The whole table, ignoring any active filter — an export that silently
+ * dropped filtered-out rows would be a data-loss surprise the next time
+ * someone opens the file expecting everything that was in the table. */
+export function toCsv(table, resolveTitle) {
+  const header = table.columns.map((column) => csvField(column.name)).join(",");
+  const lines = table.rows.map((row) => table.columns.map((column) => csvField(formatCellForCopy(row.cells[column.id], column, resolveTitle))).join(","));
+  return [header, ...lines].join("\r\n");
+}
+
+/** Compare two cell values of the same column `type`. Numbers and checkboxes
+ * compare numerically (`false` < `true`); text and date compare as strings —
+ * a date column is stored `YYYY-MM-DD`, which already sorts correctly as
+ * text, so it does not need its own branch. */
+function compareCells(a, b, type, resolveTitle) {
+  if (type === "number") return (typeof a === "number" ? a : 0) - (typeof b === "number" ? b : 0);
+  if (type === "checkbox") return Number(a === true) - Number(b === true);
+  // A `link` cell stores an object id; sort by the referenced object's
+  // current title when a resolver is available, else fall back to the id.
+  if (type === "link" && resolveTitle) {
+    a = a ? (resolveTitle(a) ?? a) : "";
+    b = b ? (resolveTitle(b) ?? b) : "";
+  }
+  return String(a ?? "").localeCompare(String(b ?? ""), undefined, { sensitivity: "base", numeric: true });
+}
+
+/**
+ * Sort rows by one column, or return them in their stored order for
+ * `sort: null` — a table with no sort applied keeps the order rows were
+ * added in, same as it would on disk.
+ */
+export function sortRows(rows, columns, sort, resolveTitle) {
+  if (!sort) return rows;
+  const column = columns.find((candidate) => candidate.id === sort.columnId);
+  if (!column) return rows;
+  const direction = sort.direction === "desc" ? -1 : 1;
+  // A stable copy: Array.prototype.sort mutates, and every caller here holds
+  // the array as a prop value that must not change out from under React.
+  return [...rows].sort((left, right) => direction * compareCells(left.cells[column.id], right.cells[column.id], column.type, resolveTitle));
+}
+
+/** Does `row` pass every active filter? A checkbox filter is
+ * `"any" | "checked" | "unchecked"`; every other column type filters by
+ * case-insensitive substring on its displayed text. An absent or blank
+ * filter for a column always passes — filtering is opt-in per column. */
+export function matchesFilters(row, columns, filters) {
+  if (!filters) return true;
+  for (const column of columns) {
+    const filter = filters[column.id];
+    if (filter === undefined || filter === null || filter === "") continue;
+    const value = row.cells[column.id];
+    if (column.type === "checkbox") {
+      if (filter === "checked" && value !== true) return false;
+      if (filter === "unchecked" && value !== false) return false;
+      continue;
+    }
+    const haystack = String(value ?? "").toLocaleLowerCase();
+    if (!haystack.includes(String(filter).toLocaleLowerCase())) return false;
+  }
+  return true;
+}
+
+export function filterRows(rows, columns, filters) {
+  return rows.filter((row) => matchesFilters(row, columns, filters));
+}
+
+/** Filter, then sort — the order the grid always applies them in: sorting a
+ * filtered-out row would be wasted work, and a user watching a column's sort
+ * arrow expects it to describe what is currently on screen. */
+export function visibleRows(table, filters, sort, resolveTitle) {
+  return sortRows(filterRows(table.rows, table.columns, filters), table.columns, sort, resolveTitle);
+}
+
+/** Which row ids / column ids fall inside a selection, resolved against one
+ * render's row/column order. `selection` holds row/column IDs, not indices
+ * — an edit anywhere else in the table must not silently move or invalidate
+ * an in-progress selection the way an index would. Returns null if either
+ * endpoint no longer exists (its row or column was deleted). */
+export function resolveSelection(rows, columns, selection) {
+  if (!selection) return null;
+  const rowIds = rows.map((row) => row.id);
+  const colIds = columns.map((column) => column.id);
+  const anchorRowIndex = rowIds.indexOf(selection.anchorRow);
+  const focusRowIndex = rowIds.indexOf(selection.focusRow);
+  const anchorColIndex = colIds.indexOf(selection.anchorCol);
+  const focusColIndex = colIds.indexOf(selection.focusCol);
+  if (anchorRowIndex === -1 || focusRowIndex === -1 || anchorColIndex === -1 || focusColIndex === -1) return null;
+  const rowStart = Math.min(anchorRowIndex, focusRowIndex);
+  const rowEnd = Math.max(anchorRowIndex, focusRowIndex);
+  const colStart = Math.min(anchorColIndex, focusColIndex);
+  const colEnd = Math.max(anchorColIndex, focusColIndex);
+  return {
+    rowIds: rowIds.slice(rowStart, rowEnd + 1),
+    columnIds: colIds.slice(colStart, colEnd + 1),
+  };
+}
+
+/** Sum of every number-column's cells across `rows` — the footer totals
+ * row. Only number columns get an entry; a text/date/checkbox/select column
+ * has nothing to sum, so its id is simply absent (the sparse-map convention
+ * `styles` already follows). */
+export function columnSums(rows, columns) {
+  const sums = {};
+  for (const column of columns) {
+    if (column.type !== "number") continue;
+    sums[column.id] = rows.reduce((total, row) => total + (typeof row.cells[column.id] === "number" ? row.cells[column.id] : 0), 0);
+  }
+  return sums;
+}
+
+const DAY_MS = 86_400_000;
+
+/** Excel's fill-series guess for one column of source values, read top to
+ * bottom: two or more evenly spaced numbers (1, 2, 3 → 4, 5, 6), dates
+ * (YYYY-MM-DD) or text ending in a number with a shared prefix ("Item 1",
+ * "Item 2" → "Item 3"). Returns `(n) => value` for the n-th cell AFTER the
+ * source (0-based), or null when the values are not a series — the caller
+ * then copies, same as Excel does for a single cell or an uneven run.
+ * Formulas are never treated as a series. */
+export function seriesOf(values) {
+  if (values.length < 2 || values.some((value) => isFormula(value))) return null;
+  const evenStep = (numbers) => {
+    const step = numbers[1] - numbers[0];
+    return numbers.every((n, i) => i === 0 || Math.abs(n - numbers[i - 1] - step) < 1e-9) ? step : null;
+  };
+  // ponytail: 10 decimals kills float noise (0.1 + 0.2) without touching any real value a cell holds.
+  const tidy = (n) => Math.round(n * 1e10) / 1e10;
+
+  const numbers = values.map((v) => (typeof v === "number" ? v : typeof v === "string" && v.trim() !== "" ? Number(v) : NaN));
+  if (numbers.every(Number.isFinite)) {
+    const step = evenStep(numbers);
+    if (step === null) return null;
+    const last = numbers[numbers.length - 1];
+    const asString = typeof values[values.length - 1] === "string";
+    return (n) => (asString ? String(tidy(last + step * (n + 1))) : tidy(last + step * (n + 1)));
+  }
+
+  if (values.every((v) => typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v))) {
+    const days = values.map((v) => Date.parse(`${v}T00:00:00Z`) / DAY_MS);
+    const step = days.every(Number.isFinite) ? evenStep(days) : null;
+    if (step === null) return null;
+    const last = days[days.length - 1];
+    return (n) => new Date((last + step * (n + 1)) * DAY_MS).toISOString().slice(0, 10);
+  }
+
+  const parts = values.map((v) => (typeof v === "string" ? /^(.*?)(\d+)$/.exec(v) : null));
+  if (parts.every(Boolean) && parts.every((m) => m[1] === parts[0][1])) {
+    const step = evenStep(parts.map((m) => Number(m[2])));
+    if (step === null) return null;
+    const last = Number(parts[parts.length - 1][2]);
+    return (n) => `${parts[0][1]}${last + step * (n + 1)}`;
+  }
+  return null;
+}
+
+/** The fill mechanics: copy `source`'s cell values across `target`, cycling
+ * through source rows/columns to cover a larger target. With `series` (the
+ * fill handle — Ctrl+D stays a plain copy, as in Excel) a source column that
+ * reads as a series continues it instead, see `seriesOf`. `target` is
+ * assumed to start right below the source. */
+export function fillRange(table, source, target, { series = false } = {}) {
+  if (source.rowIds.length === 0 || source.columnIds.length === 0) return table;
+  const sourceRows = source.rowIds.map((id) => table.rows.find((row) => row.id === id));
+  const continued = new Map();
+  if (series && sourceRows.every(Boolean)) {
+    for (const columnId of source.columnIds) {
+      const next = seriesOf(sourceRows.map((row) => row.cells[columnId]));
+      if (next) continued.set(columnId, next);
+    }
+  }
+  let next = table;
+  for (let r = 0; r < target.rowIds.length; r++) {
+    const sourceRow = sourceRows[r % sourceRows.length];
+    if (!sourceRow) continue;
+    for (let c = 0; c < target.columnIds.length; c++) {
+      const sourceColumnId = source.columnIds[c % source.columnIds.length];
+      const seriesNext = continued.get(sourceColumnId);
+      next = setCell(next, target.rowIds[r], target.columnIds[c], seriesNext ? seriesNext(r) : sourceRow.cells[sourceColumnId]);
+    }
+  }
+  return next;
+}
+
+// ------------------------------------------------------------------- DOM
+
+function element(tag, properties = {}, children = []) {
+  const node = Object.assign(document.createElement(tag), properties);
+  for (const child of children) node.append(child);
+  return node;
+}
+
+/** There is no undo for a column/row delete (see removeColumn/removeRow),
+ * so a destructive button that would drop actual data requires a second
+ * click within a short window instead of firing on the first. The button's
+ * own label/title carry the armed state — no modal, no new plugin-api
+ * surface. Armed state resets after 2.5s or on blur, whichever first. */
+function armOnFirstClick(button, { armedLabel, armedTitle, run }) {
+  let armed = false;
+  let timer = null;
+  const idleLabel = button.textContent;
+  const idleTitle = button.title;
+  const disarm = () => {
+    armed = false;
+    if (timer) { clearTimeout(timer); timer = null; }
+    button.classList.remove("ntbl-danger-armed");
+    button.textContent = idleLabel;
+    button.title = idleTitle;
+  };
+  button.addEventListener("click", (event) => {
+    if (!armed) {
+      armed = true;
+      button.classList.add("ntbl-danger-armed");
+      if (armedLabel) button.textContent = armedLabel;
+      button.title = armedTitle ?? t("Click again to confirm");
+      timer = setTimeout(disarm, 2500);
+      event.stopPropagation();
+      return;
+    }
+    disarm();
+    run();
+  });
+  button.addEventListener("blur", disarm);
+}
+
+/** Every string drawn below reaches the DOM through `textContent` or a
+ * form control's `.value`, never through markup built from a string — same
+ * rule notible-habits keeps, for the same reason: a table's cells and column
+ * names arrive from sync and import like any other object content. */
+function text(tag, value, className) {
+  const node = document.createElement(tag);
+  node.textContent = value;
+  if (className) node.className = className;
+  return node;
+}
+
+// How many past states Ctrl+Z can step back through. Each entry is a whole
+// `table` object, but edits are already immutable/structural-sharing (every
+// pure function above returns new top-level arrays, reusing untouched row/
+// column objects), so this is a handful of shallow references, not deep
+// clones — cheap to keep bounded history for.
+const UNDO_LIMIT = 50;
+
+export class TableStore {
+  constructor(context, objectId) {
+    this.context = context;
+    this.objectId = objectId;
+    this.table = { id: objectId, name: "", columns: [], rows: [] };
+    this.listeners = new Set();
+    this.loading = true;
+    this.error = null;
+    this.updatedAt = undefined;
+    this.history = [];
+  }
+
+  onChange(listener) {
+    this.listeners.add(listener);
+    return () => this.listeners.delete(listener);
+  }
+
+  announce() {
+    for (const listener of [...this.listeners]) {
+      try {
+        listener();
+      } catch {
+        // A broken surface must not stop the others from redrawing.
+      }
+    }
+  }
+
+  async load() {
+    this.loading = true;
+    this.announce();
+    try {
+      const object = await this.context.data.objects.get(this.objectId);
+      if (!object) {
+        this.error = t("This table no longer exists.");
+      } else {
+        this.table = parseTable(object);
+        this.updatedAt = object.updated_at;
+        this.error = null;
+      }
+    } catch (cause) {
+      this.error = String(cause?.message ?? cause);
+    } finally {
+      this.loading = false;
+      this.announce();
+    }
+  }
+
+  /** Apply a pure edit optimistically, then persist. The optimistic-lock
+   * conflict that `data.objects.update` can throw (another surface, or a
+   * sync pull, wrote this table since it was loaded) is resolved the same
+   * way the Properties plugin resolves it: refetch and retry once with the
+   * fresh timestamp, rather than surfacing a raw "conflict" on every
+   * keystroke of a fast typist. */
+  async apply(next) {
+    this.history.push(this.table);
+    if (this.history.length > UNDO_LIMIT) this.history.shift();
+    await this.persist(next);
+  }
+
+  get canUndo() {
+    return this.history.length > 0;
+  }
+
+  /** Step one edit back — column/row deletes included, since those are
+   * exactly the edits that used to have no recovery path at all (Ctrl+Z fell
+   * through to whatever the browser considered "undoable", which was never
+   * this table). Does not push the state it's leaving onto `history` — undo
+   * is one-directional, not undo/redo. */
+  async undo() {
+    const previous = this.history.pop();
+    if (previous === undefined) return;
+    await this.persist(previous);
+  }
+
+  /** Pick up a version of this table written elsewhere — in practice a sync
+   * pull while the grid is open. Without it the grid kept showing (and on
+   * the next edit, saving back over) the version it loaded, so a column
+   * added on another machine never appeared here. The undo history is
+   * dropped: stepping back would now mean undoing the other machine's edit. */
+  async refreshIfChanged() {
+    if (this.saving || this.loading) return;
+    const object = await this.context.data.objects.get(this.objectId).catch(() => null);
+    if (!object || this.saving || object.updated_at === this.updatedAt) return;
+    this.table = parseTable(object);
+    this.updatedAt = object.updated_at;
+    this.history = [];
+    this.remoteReload = true;
+    try { this.announce(); } finally { this.remoteReload = false; }
+  }
+
+  /** Writes go out one at a time. Overlapping writes (Enter, type, Enter
+   * before the first returned) all carried the same stale `updatedAt`, so the
+   * second one hit the optimistic lock, and its fallback `load()` wiped the
+   * grid along with whatever was being typed (P1, 01.10). Each queued write
+   * sends the latest table, so a burst still ends with everything stored. */
+  async persist(next) {
+    this.table = next;
+    this.announce();
+    this.saving = (this.saving ?? 0) + 1;
+    const run = (this.writeQueue ?? Promise.resolve()).then(() => this.save());
+    this.writeQueue = run;
+    try { await run; } finally { this.saving -= 1; }
+  }
+
+  async save() {
+    const patch = { props: serializeTable(this.table) };
+    try {
+      const updated = await this.context.data.objects.update(this.objectId, patch, this.updatedAt);
+      this.updatedAt = updated.updated_at;
+    } catch (cause) {
+      if (!String(cause?.message ?? cause).toLowerCase().includes("conflict")) {
+        this.context.ui.notice(`Could not save this table: ${String(cause?.message ?? cause)}`);
+        return;
+      }
+      try {
+        const fresh = await this.context.data.objects.get(this.objectId);
+        if (!fresh) throw new Error("This table no longer exists.");
+        const updated = await this.context.data.objects.update(this.objectId, patch, fresh.updated_at);
+        this.updatedAt = updated.updated_at;
+      } catch (retryCause) {
+        this.context.ui.notice(`Could not save this table: ${String(retryCause?.message ?? retryCause)}`);
+        await this.load();
+      }
+    }
+  }
+}
+
+/**
+ * E14B-STORE (Hive #2): the store behind a table embedded in a note. The note
+ * owns saving and conflicts, so every committed edit hands the new source back
+ * to Core synchronously (`updateSource`). Nothing is ever pending when the
+ * note switches. No write queue, no optimistic lock, no refetch: a change from
+ * outside (undo, sync) remounts the block with the new source instead.
+ */
+export class EmbeddedTableStore extends TableStore {
+  constructor(context, codeBlock) {
+    super(context, null);
+    this.codeBlock = codeBlock;
+    const parsed = parseEmbedded(codeBlock.source);
+    this.table = parsed.table;
+    this.error = parsed.error;
+    this.loading = false;
+    this.saving = 0;
+    this.readOnly = Boolean(parsed.error) || codeBlock.readOnly === true;
+  }
+
+  async load() { this.announce(); }
+
+  async refreshIfChanged() {}
+
+  async apply(next) {
+    if (this.readOnly) return;
+    await super.apply(next);
+  }
+
+  async persist(next) {
+    if (this.readOnly) return;
+    this.table = next;
+    this.announce();
+    this.save();
+  }
+
+  save() {
+    let written = false;
+    try { written = this.codeBlock.updateSource(serializeEmbedded(this.table)) === true; } catch { written = false; }
+    if (written) return;
+    this.readOnly = true;
+    this.context.ui?.notice?.(t("This table is no longer in the note, so the edit was not saved."));
+    this.announce();
+  }
+}
+
+const TYPE_LABEL = { text: tr("Text"), number: tr("Number"), date: tr("Date"), checkbox: tr("Checkbox"), select: tr("Select"), link: tr("Link") };
+
+/** One cell's input control, keyed to `column.type`. Committed on blur/change
+ * rather than on every keystroke — a table's `apply` writes the whole grid,
+ * so debouncing at the character level would mean every other cell's edit
+ * races the same network write. */
+function cellInput(store, row, column, resolveTitle, rawRow) {
+  const value = row.cells[column.id];
+  const commit = (next) => void store.apply(setCell(store.table, row.id, column.id, next));
+  // Committing a cell rebuilds the whole grid (see mountGrid's render), which
+  // would otherwise strand a click that landed on the very input being
+  // replaced — the same `data-focus-key` mechanism the header filters use,
+  // keyed to this row+column so the rebuilt cell gets focus back rather than
+  // requiring a second click.
+  const focusKey = `cell:${row.id}:${column.id}`;
+  // A formula cell (any text/number column). Idle shows the computed value
+  // (`value` here is already the resolved view's cell); focus swaps in the
+  // "=" source for editing; commit stores whatever was typed.
+  const source = rawRow ? rawRow.cells[column.id] : value;
+  if (isFormula(source)) {
+    const display = column.type === "number" && column.format && typeof value === "number"
+      ? formatNumber(value, column.format, store.context?.i18n?.locale)
+      : (value == null ? "" : String(value));
+    const input = element("input", { type: "text", className: "ntbl-cell-input ntbl-cell-formula", value: display });
+    input.dataset.focusKey = focusKey;
+    input.addEventListener("focus", () => { input.value = String(source); input.select(); });
+    input.addEventListener("blur", () => { input.value = display; });
+    input.addEventListener("change", () => commit(input.value));
+    return input;
+  }
+  if (column.type === "checkbox") {
+    const input = element("input", { type: "checkbox", checked: value === true, className: "ntbl-check" });
+    input.dataset.focusKey = focusKey;
+    input.addEventListener("change", () => commit(input.checked));
+    return input;
+  }
+  if (column.type === "select") {
+    const input = element("select", { className: "ntbl-cell-input" });
+    input.dataset.focusKey = focusKey;
+    input.append(element("option", { value: "", textContent: "—" }));
+    for (const option of column.options ?? []) input.append(element("option", { value: option, textContent: option, selected: option === value }));
+    input.addEventListener("change", () => commit(input.value));
+    return input;
+  }
+  // A reference to another workspace object. The cell stores its id; the
+  // input shows/edits its title. Type or paste `[[Title]]` (or a bare
+  // title) and, on commit, the plugin resolves it to the object whose
+  // title matches — exact first, then a unique prefix. No match clears it.
+  if (column.type === "link") {
+    const wrap = element("div", { className: "ntbl-link-cell" });
+    const title = typeof value === "string" && value ? resolveTitle?.(value) : undefined;
+    const input = element("input", {
+      type: "text",
+      className: "ntbl-cell-input ntbl-cell-link",
+      value: typeof value === "string" && value ? `[[${title ?? value}]]` : "",
+      placeholder: t("[[Object title]]"),
+    });
+    input.dataset.focusKey = focusKey;
+    // On no/ambiguous match, DO NOT commit — committing the old stored value
+    // would rebuild this cell from `value` and wipe whatever the user just
+    // typed, with only a toast (easy to miss) as a trace it ever happened.
+    // Leaving the input's own DOM value untouched keeps the typed text on
+    // screen so the user can fix the title or clear the cell themselves; the
+    // `--unresolved` class flags that it is not actually saved yet.
+    input.addEventListener("change", async () => {
+      const query = input.value.replace(/^\s*\[\[|\]\]\s*$/g, "").trim();
+      if (!query) { commit(""); return; }
+      input.classList.remove("ntbl-cell-link--unresolved");
+      try {
+        // Indexed lookup (API 1.18) instead of pulling up to 5000 objects and
+        // filtering client-side — that used to silently stop finding a real
+        // match past 5000 objects in the workspace, indistinguishable from a
+        // typo. Exact (case-insensitive) title match wins outright; failing
+        // that, a search that narrows to exactly one candidate still counts.
+        const exactHits = await store.context.data.objects.findByTitle(query, { exact: true });
+        let hit = exactHits[0] ?? null;
+        if (!hit) {
+          const candidates = await store.context.data.objects.findByTitle(query);
+          hit = candidates.length === 1 ? candidates[0] : null;
+        }
+        if (hit) { commit(hit.id); return; }
+        store.context.ui.notice(`No single object titled "${query}" — left as typed, not saved. Fix the title or clear the cell.`);
+        input.classList.add("ntbl-cell-link--unresolved");
+      } catch (cause) {
+        store.context.ui.notice(`Could not look up "${query}": ${String(cause?.message ?? cause)}`);
+        input.classList.add("ntbl-cell-link--unresolved");
+      }
+    });
+    wrap.append(input);
+    if (typeof value === "string" && value) {
+      const open = element("button", { type: "button", className: "ntbl-link-open", title: title ? `Open "${title}"` : t("This reference no longer resolves"), textContent: "↗" });
+      if (!title) open.disabled = true;
+      open.addEventListener("click", () => void store.context.ui.openObject(value));
+      wrap.append(open);
+    }
+    return wrap;
+  }
+  // A number column with a display format: show the formatted value while
+  // idle, the raw number while focused, and parse the typed text back on
+  // commit (strip the symbol / grouping / percent sign). A plain number
+  // column keeps the native <input type="number">.
+  if (column.type === "number" && column.format) {
+    const locale = store.context?.i18n?.locale;
+    const input = element("input", {
+      type: "text",
+      inputMode: "decimal",
+      className: "ntbl-cell-input",
+      value: typeof value === "number" ? formatNumber(value, column.format, locale) : "",
+    });
+    input.dataset.focusKey = focusKey;
+    input.addEventListener("focus", () => { input.value = typeof value === "number" ? String(value) : ""; });
+    input.addEventListener("blur", () => { input.value = typeof value === "number" ? formatNumber(value, column.format, locale) : input.value; });
+    input.addEventListener("change", () => {
+      if (input.value.trim() === "") { commit(""); return; }
+      const parsed = parseFormattedNumber(input.value, locale);
+      if (!Number.isFinite(parsed)) { input.value = typeof value === "number" ? formatNumber(value, column.format, locale) : ""; return; }
+      commit(parsed);
+    });
+    return input;
+  }
+  // A plain <input> cannot wrap its text onto a second line — a wrapped
+  // text column needs a control that can, so it swaps to a <textarea> only
+  // when both conditions hold. Every other type/column keeps the <input>.
+  if (column.type === "text" && column.wrap) {
+    const textarea = element("textarea", {
+      className: "ntbl-cell-textarea",
+      value: value == null ? "" : String(value),
+      rows: 2,
+    });
+    textarea.dataset.focusKey = focusKey;
+    textarea.addEventListener("change", () => commit(textarea.value));
+    return textarea;
+  }
+  const input = element("input", {
+    type: column.type === "number" ? "number" : column.type === "date" ? "date" : "text",
+    value: value == null ? "" : String(value),
+    className: "ntbl-cell-input",
+  });
+  input.dataset.focusKey = focusKey;
+  input.addEventListener("change", () => commit(input.value));
+  return input;
+}
+
+/** The filter control for one column: a tri-state select for checkbox
+ * columns, a free-text substring box for everything else. Lives in the
+ * right-click menu now, not the header itself — see columnMenu. */
+function filterControl(column, filters, setFilter) {
+  if (column.type === "checkbox") {
+    const select = element("select", { className: "ntbl-th-filter" });
+    for (const [value, label] of [["", t("Any")], ["checked", t("Checked")], ["unchecked", t("Unchecked")]]) select.append(element("option", { value, textContent: label, selected: (filters[column.id] ?? "") === value }));
+    select.addEventListener("change", () => setFilter(column.id, select.value));
+    return select;
+  }
+  const input = element("input", { className: "ntbl-th-filter", placeholder: t("Filter…"), value: filters[column.id] ?? "" });
+  // A live filter's own render() rebuilds the whole grid on every keystroke
+  // (the filtered row set can only be recomputed from a fresh table read),
+  // which would otherwise replace this very input out from under the caret
+  // typing into it. `data-focus-key` is how render() finds "the same" input
+  // again after rebuilding and gives it back focus and its caret position.
+  input.dataset.focusKey = `filter:${column.id}`;
+  input.addEventListener("input", () => setFilter(column.id, input.value));
+  return input;
+}
+
+/** The right-click panel for one column: sort, format (type + select
+ * options) and filter — everything that used to sit permanently under the
+ * column name, now opened on demand so a table with several columns does not
+ * read as a wall of controls before anyone has touched one. */
+function columnMenu(store, column, sort, setSort, filters, setFilter) {
+  const menu = element("div", { className: "ntbl-colmenu" });
+
+  const sortRow = element("div", { className: "ntbl-colmenu-row" });
+  sortRow.append(text("span", t("Sort"), "ntbl-colmenu-label"));
+  const sortGroup = element("div", { className: "ntbl-colmenu-sort" });
+  for (const [direction, label, glyph] of [["asc", t("Ascending"), "▲"], ["desc", t("Descending"), "▼"]]) {
+    const isActive = sort?.columnId === column.id && sort.direction === direction;
+    const button = element("button", {
+      type: "button",
+      className: `ntbl-colmenu-btn${isActive ? " is-active" : ""}`,
+      title: label,
+      textContent: glyph,
+    });
+    button.addEventListener("click", () => setSort(isActive ? null : { columnId: column.id, direction }));
+    sortGroup.append(button);
+  }
+  sortRow.append(sortGroup);
+  menu.append(sortRow);
+
+  const formatRow = element("div", { className: "ntbl-colmenu-row" });
+  formatRow.append(text("span", t("Format"), "ntbl-colmenu-label"));
+  const typeSelect = element("select", { className: "ntbl-th-type" });
+  for (const type of COLUMN_TYPES) typeSelect.append(element("option", { value: type, textContent: t(TYPE_LABEL[type]), selected: type === column.type }));
+  typeSelect.addEventListener("change", () => void store.apply(updateColumn(store.table, column.id, { type: typeSelect.value })));
+  formatRow.append(typeSelect);
+  menu.append(formatRow);
+
+  if (column.type === "text") {
+    const wrapRow = element("div", { className: "ntbl-colmenu-row ntbl-colmenu-row--inline" });
+    const wrapLabel = element("label", { className: "ntbl-colmenu-checkbox" });
+    const wrapCheckbox = element("input", { type: "checkbox", checked: column.wrap === true });
+    wrapCheckbox.addEventListener("change", () => void store.apply(updateColumn(store.table, column.id, { wrap: wrapCheckbox.checked })));
+    wrapLabel.append(wrapCheckbox, text("span", t("Wrap text")));
+    wrapRow.append(wrapLabel);
+    menu.append(wrapRow);
+  }
+
+  if (column.type === "select") {
+    const optionsRow = element("div", { className: "ntbl-colmenu-row" });
+    optionsRow.append(text("span", t("Options"), "ntbl-colmenu-label"));
+    const options = element("input", {
+      className: "ntbl-th-options",
+      placeholder: t("Comma separated"),
+      value: (column.options ?? []).join(", "),
+    });
+    options.addEventListener("change", () => {
+      const next = options.value.split(",").map((option) => option.trim()).filter(Boolean);
+      void store.apply(updateColumn(store.table, column.id, { options: next }));
+    });
+    optionsRow.append(options);
+    menu.append(optionsRow);
+  }
+
+  if (column.type === "number") {
+    const fmt = column.format ?? { style: "plain", decimals: 0 };
+    const applyFormat = (patch) => {
+      const next = { style: fmt.style, decimals: fmt.decimals, ...(fmt.symbol ? { symbol: fmt.symbol } : {}), ...patch };
+      void store.apply(updateColumn(store.table, column.id, { format: next }));
+    };
+    const numRow = element("div", { className: "ntbl-colmenu-row" });
+    numRow.append(text("span", t("Number"), "ntbl-colmenu-label"));
+    const styleSelect = element("select", { className: "ntbl-th-type" });
+    for (const [value, label] of [["plain", t("Plain")], ["currency", t("Currency")], ["percent", t("Percent")]]) {
+      styleSelect.append(element("option", { value, textContent: label, selected: value === fmt.style }));
+    }
+    styleSelect.addEventListener("change", () => applyFormat({ style: styleSelect.value }));
+    numRow.append(styleSelect);
+    const decimals = element("input", { type: "number", className: "ntbl-th-decimals", min: 0, max: 4, value: String(fmt.decimals ?? 0), title: t("Decimal places") });
+    decimals.addEventListener("change", () => applyFormat({ decimals: Math.min(4, Math.max(0, Math.round(Number(decimals.value) || 0))) }));
+    numRow.append(decimals);
+    if (fmt.style === "currency") {
+      const symbol = element("input", { className: "ntbl-th-symbol", placeholder: "zł", value: fmt.symbol ?? "", title: t("Currency symbol") });
+      symbol.addEventListener("change", () => applyFormat({ symbol: symbol.value.trim() }));
+      numRow.append(symbol);
+    }
+    menu.append(numRow);
+  }
+
+  const filterRow = element("div", { className: "ntbl-colmenu-row" });
+  filterRow.append(text("span", t("Filter"), "ntbl-colmenu-label"));
+  filterRow.append(filterControl(column, filters, setFilter));
+  menu.append(filterRow);
+
+  const insertRow_ = element("div", { className: "ntbl-colmenu-row" });
+  insertRow_.append(text("span", t("Insert"), "ntbl-colmenu-label"));
+  const insertGroup = element("div", { className: "ntbl-colmenu-sort" });
+  const insertLeftButton = element("button", { type: "button", className: "ntbl-colmenu-btn", title: t("Insert column left"), textContent: "◀+" });
+  insertLeftButton.addEventListener("click", () => void store.apply(insertColumnAt(store.table, column.id, "before")));
+  const insertRightButton = element("button", { type: "button", className: "ntbl-colmenu-btn", title: t("Insert column right"), textContent: "+▶" });
+  insertRightButton.addEventListener("click", () => void store.apply(insertColumnAt(store.table, column.id, "after")));
+  insertGroup.append(insertLeftButton, insertRightButton);
+  insertRow_.append(insertGroup);
+  menu.append(insertRow_);
+
+  return menu;
+}
+
+/** The floating bar over a multi-cell selection: bold, the six highlight
+ * colors (plus "none"), and a clear-formatting button — all bulk actions
+ * over the whole range in one `store.apply`, same reasoning as
+ * `setRangeStyle` itself: N cells, one network write. Only shown for a
+ * range bigger than one cell — a single cell already edits inline, there
+ * is nothing to act on "in bulk" yet. */
+function formattingToolbar(store, range) {
+  const bar = element("div", { className: "ntbl-format-bar" });
+
+  const boldButton = element("button", { type: "button", className: "ntbl-format-btn", title: t("Bold"), textContent: "B" });
+  boldButton.style.fontWeight = "700";
+  boldButton.addEventListener("click", () => void store.apply(setRangeStyle(store.table, range, { bold: true })));
+  bar.append(boldButton);
+
+  for (const colour of HIGHLIGHT_COLOURS) {
+    const swatch = element("button", { type: "button", className: "ntbl-format-swatch", title: colour });
+    swatch.dataset.color = colour;
+    swatch.addEventListener("click", () => void store.apply(setRangeStyle(store.table, range, { color: colour })));
+    bar.append(swatch);
+  }
+
+  const noneSwatch = element("button", { type: "button", className: "ntbl-format-swatch ntbl-format-swatch--none", title: t("No color") });
+  noneSwatch.addEventListener("click", () => void store.apply(setRangeStyle(store.table, range, { color: undefined })));
+  bar.append(noneSwatch);
+
+  const clearButton = element("button", { type: "button", className: "ntbl-format-btn", title: t("Clear formatting"), textContent: t("Clear") });
+  clearButton.addEventListener("click", () => void store.apply(clearRangeStyle(store.table, range)));
+  bar.append(clearButton);
+
+  return bar;
+}
+
+/** Right-click panel for one cell: "Merge cells" (only offered when the
+ * selection spans more than one cell, disabled with an explanatory title
+ * while a sort or filter is active) or "Unmerge" when the right-clicked
+ * cell is the top-left of an existing merge — plus row/column insert and
+ * duplicate actions for `rowId`/`colId`, the actual cell that was
+ * right-clicked, which always apply regardless of how big the selection is. */
+function rangeMenu_(store, range, sort, filters, resolveTitle, rowId, colId, closeMenu) {
+  const menu = element("div", { className: "ntbl-rangemenu" });
+  const isMultiCell = range.rowIds.length > 1 || range.columnIds.length > 1;
+  const rowIndexes = range.rowIds.map((id) => store.table.rows.findIndex((row) => row.id === id));
+  const colIndexes = range.columnIds.map((id) => store.table.columns.findIndex((column) => column.id === id));
+  const startRowIndex = Math.min(...rowIndexes);
+  const startColIndex = Math.min(...colIndexes);
+  const existingMerge = (store.table.merges ?? []).find((m) => m.startRowIndex === startRowIndex && m.startColIndex === startColIndex);
+
+  if (existingMerge) {
+    const unmergeButton = element("button", { type: "button", className: "ntbl-rangemenu-btn", textContent: t("Unmerge") });
+    unmergeButton.addEventListener("click", () => { closeMenu(); void store.apply(unmergeCells(store.table, existingMerge.startRowIndex, existingMerge.startColIndex)); });
+    menu.append(unmergeButton);
+  } else if (isMultiCell) {
+    const viewConstrained = Boolean(sort) || Object.values(filters ?? {}).some((value) => value !== undefined && value !== null && value !== "");
+    const mergeButton = element("button", { type: "button", className: "ntbl-rangemenu-btn", textContent: t("Merge cells") });
+    mergeButton.disabled = viewConstrained;
+    mergeButton.title = viewConstrained ? t("Clear the active sort or filter first — merge needs rows and columns in their stored order.") : "";
+    mergeButton.addEventListener("click", () => { closeMenu(); void store.apply(mergeCells(store.table, range, sort, filters)); });
+    menu.append(mergeButton);
+  }
+
+  menu.append(element("div", { className: "ntbl-rangemenu-sep" }));
+  for (const [label, run, danger] of [
+    [t("Copy"), () => navigator.clipboard.writeText(cellsToTsv(resolveFormulas(store.table), range, resolveTitle)).catch(() => store.context?.ui?.notice?.(t("Could not copy: the clipboard is unavailable."))), false],
+    [t("Paste"), async () => {
+      let tsv = "";
+      try { tsv = await navigator.clipboard.readText(); } catch { return; }
+      if (tsv) await store.apply(applyTsvPaste(store.table, range, tsv, sort, filters));
+    }, false],
+    [t("Clear contents"), () => store.apply(clearRangeCells(store.table, range)), true],
+  ]) {
+    const button = element("button", { type: "button", className: danger ? "ntbl-rangemenu-btn ntbl-rangemenu-btn--danger" : "ntbl-rangemenu-btn", textContent: label });
+    button.addEventListener("click", () => { closeMenu(); void run(); });
+    menu.append(button);
+  }
+
+  menu.append(element("div", { className: "ntbl-rangemenu-sep" }));
+  for (const [label, action, danger] of [
+    [t("Insert row above"), () => insertRow(store.table, rowId, "above")],
+    [t("Insert row below"), () => insertRow(store.table, rowId, "below")],
+    [t("Duplicate row"), () => duplicateRow(store.table, rowId)],
+    [t("Delete row"), () => removeRow(store.table, rowId), true],
+  ]) {
+    const button = element("button", { type: "button", className: danger ? "ntbl-rangemenu-btn ntbl-rangemenu-btn--danger" : "ntbl-rangemenu-btn", textContent: label });
+    if (danger && store.table.rows.length <= 1) button.disabled = true;
+    if (label === t("Delete row") && !button.disabled && rowHasData(store.table.rows.find((row) => row.id === rowId) ?? { cells: {} })) {
+      armOnFirstClick(button, { armedTitle: t("Click again to delete this row"), run: () => { closeMenu(); void store.apply(action()); } });
+    } else {
+      button.addEventListener("click", () => { closeMenu(); void store.apply(action()); });
+    }
+    menu.append(button);
+  }
+
+  menu.append(element("div", { className: "ntbl-rangemenu-sep" }));
+  for (const [label, action, danger] of [
+    [t("Insert column left"), () => insertColumnAt(store.table, colId, "before")],
+    [t("Insert column right"), () => insertColumnAt(store.table, colId, "after")],
+    [t("Delete column"), () => removeColumn(store.table, colId), true],
+  ]) {
+    const button = element("button", { type: "button", className: danger ? "ntbl-rangemenu-btn ntbl-rangemenu-btn--danger" : "ntbl-rangemenu-btn", textContent: label });
+    if (danger && store.table.columns.length <= 1) button.disabled = true;
+    if (label === t("Delete column") && !button.disabled && columnHasData(store.table, colId)) {
+      armOnFirstClick(button, { armedTitle: t("Click again to delete this column and its data"), run: () => { closeMenu(); void store.apply(action()); } });
+    } else {
+      button.addEventListener("click", () => { closeMenu(); void store.apply(action()); });
+    }
+    menu.append(button);
+  }
+
+  return menu;
+}
+
+/** A column header drags to reorder from a dedicated grip, and resizes from
+ * a strip on its trailing edge — the two live only on the `th`, so neither
+ * touches a single cell's DOM and neither can be triggered by an ordinary
+ * click into the name field. */
+function columnHeader(store, column, sort, setSort, filters, setFilter, openMenu, startColumnDrag, selectColumn) {
+  const active = sort?.columnId === column.id;
+  const filtered = (filters[column.id] ?? "") !== "";
+  const th = element("th", { className: "ntbl-th" });
+  th.dataset.colId = column.id;
+  if (column.width) th.style.width = `${column.width}px`;
+  th.addEventListener("contextmenu", (event) => {
+    event.preventDefault();
+    openMenu(column.id, event.clientX, event.clientY);
+  });
+  // Click the header chrome (label, badges, padding) to select the whole
+  // column; shift-click a second header to span a block of columns. Clicks
+  // on the rename input, the menu / remove buttons and the resize handle
+  // keep their own behaviour. The ⠿ drag handle: a plain click (no drag)
+  // falls through here and selects, a drag ends in a store.apply/render.
+  th.addEventListener("click", (event) => {
+    if (event.target.closest("input, .ntbl-th-resize, .ntbl-th-menu, .ntbl-th-remove")) return;
+    selectColumn(column.id, event.shiftKey);
+  });
+
+  // Reorder is plain mousedown/mousemove/mouseup, not HTML5 drag-and-drop —
+  // Tauri's window has native OS drag-drop handling enabled by default
+  // (`dragDropEnabled`), which swallows the browser's own dragstart before
+  // it ever fires, so a `draggable` element never starts a drag inside this
+  // app. The rest of this grid already drags cell selections and resizes
+  // columns the same pointer-tracking way, so this just follows suit.
+  const dragHandle = element("button", { type: "button", className: "ntbl-th-drag", title: t("Drag to move this column"), textContent: "⠿" });
+  dragHandle.addEventListener("mousedown", (event) => {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    event.stopPropagation();
+    startColumnDrag(column.id);
+  });
+
+  const nameRow = element("div", { className: "ntbl-th-name" });
+  nameRow.append(dragHandle);
+  const nameInput = element("input", { className: "ntbl-th-input", value: column.name });
+  nameInput.addEventListener("change", () => void store.apply(updateColumn(store.table, column.id, { name: nameInput.value })));
+  nameRow.append(nameInput);
+
+  // Read-only feedback for state set through the menu — a column that is
+  // sorted or filtered still has to say so when the header itself carries
+  // no controls any more.
+  if (active) nameRow.append(text("span", sort.direction === "asc" ? "▲" : "▼", "ntbl-th-badge"));
+  if (filtered) nameRow.append(text("span", "⏷", "ntbl-th-badge"));
+
+  const menuButton = element("button", {
+    type: "button",
+    className: "ntbl-th-menu",
+    title: t("Sort, format and filter this column"),
+    textContent: "⋯",
+  });
+  menuButton.addEventListener("click", (event) => {
+    const rect = menuButton.getBoundingClientRect();
+    openMenu(column.id, rect.left, rect.bottom + 4);
+  });
+  nameRow.append(menuButton);
+
+  const removeButton = element("button", { type: "button", className: "ntbl-th-remove", title: t("Remove column"), textContent: "×" });
+  if (columnHasData(store.table, column.id)) {
+    armOnFirstClick(removeButton, {
+      armedTitle: t("Click again to delete this column and its data"),
+      run: () => void store.apply(removeColumn(store.table, column.id)),
+    });
+  } else {
+    removeButton.addEventListener("click", () => void store.apply(removeColumn(store.table, column.id)));
+  }
+  nameRow.append(removeButton);
+  th.append(nameRow);
+
+  // Width resize: dragged live on the `th`'s own inline style (cheap, no
+  // grid rebuild, so it never fights a cell's focus the way the selection
+  // bug did) and only written to the table — one store.apply — on release.
+  // Skipped entirely when the table has its widths locked.
+  if (store.table.lockWidths) return th;
+  const resizeHandle = element("div", { className: "ntbl-th-resize" });
+  resizeHandle.addEventListener("pointerdown", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const startX = event.clientX;
+    const startWidth = th.getBoundingClientRect().width;
+    const tableEl = th.closest("table");
+    const startTableWidth = tableEl?.getBoundingClientRect().width ?? 0;
+    resizeHandle.setPointerCapture(event.pointerId);
+    function onMove(moveEvent) {
+      const width = Math.round(Math.min(MAX_COLUMN_WIDTH, Math.max(MIN_COLUMN_WIDTH, startWidth + (moveEvent.clientX - startX))));
+      th.style.width = `${width}px`;
+      th.style.minWidth = `${width}px`;
+      // The table's own width is pinned (see render), so it grows with the column.
+      if (tableEl) tableEl.style.width = `${startTableWidth + width - startWidth}px`;
+    }
+    function onUp(upEvent) {
+      resizeHandle.releasePointerCapture(upEvent.pointerId);
+      resizeHandle.removeEventListener("pointermove", onMove);
+      resizeHandle.removeEventListener("pointerup", onUp);
+      const width = Math.round(Math.min(MAX_COLUMN_WIDTH, Math.max(MIN_COLUMN_WIDTH, startWidth + (upEvent.clientX - startX))));
+      void store.apply(updateColumn(store.table, column.id, { width }));
+    }
+    resizeHandle.addEventListener("pointermove", onMove);
+    resizeHandle.addEventListener("pointerup", onUp);
+  });
+  th.append(resizeHandle);
+
+  return th;
+}
+
+/**
+ * The grid: column headers (rename, retype, filter, sort, remove) over rows
+ * of typed cell inputs, with add-row/add-column controls. Mounted through
+ * `views.registerObjectTab` — Core hands this the object id of the table
+ * that was opened, whether that was a click in the sidebar tree or a
+ * `[[Table name]]` link inside a note.
+ */
+// E14B-GRID (Hive #2): `store` is a TableStore (a standalone table object) or
+// an EmbeddedTableStore (a table inside a note, `embedded: true`).
+function mountGrid(context, container, store, { embedded = false } = {}) {
+  let sort = null;
+  const filters = {};
+  // The one column-menu popup open at a time, right-clicked or opened via
+  // the header's "⋯" button. Position is where the trigger fired, clamped
+  // into the viewport when the panel is built — see render().
+  let openMenu = null;
+  // A rectangular range, by row/column ID so it survives a re-render.
+  // `dragging` is true between mousedown and mouseup on a cell, so a
+  // mousemove elsewhere on the page (e.g. after the pointer leaves the
+  // table) does not keep extending it once the button is no longer down.
+  let selection = null;
+  let dragging = false;
+  // A right-click inside a multi-cell selection, or on a merged cell's
+  // top-left — shows the merge/unmerge panel.
+  let rangeMenu = null; // { x, y }
+  // The column being dragged by its header handle — { id, overId } — tracked
+  // the same mousedown/mousemove/mouseup way as cell-range selection above,
+  // not HTML5 drag-and-drop (see columnHeader's comment on why).
+  let columnDrag = null;
+  // Same idea, for a row dragged by its leading handle.
+  let rowDrag = null;
+  // The fill handle, dragged from the bottom-right corner of the current
+  // selection — { source, overRowId }. Downward-only (see fillRange's doc):
+  // it repeats the selected cell(s) into every visible row between the
+  // selection and wherever the pointer is released.
+  let fillDrag = null;
+  // Excel's two modes for the focused cell: false = selected ("ready":
+  // arrows move between cells, Ctrl+C copies the whole cell), true = being
+  // edited (arrows move the caret). Every cell is an <input>, so the mode is
+  // tracked here rather than by which element has focus: a fresh focus is
+  // "ready", typing / double-click / F2 switch to editing.
+  let editing = false;
+  // Column where a run of Tabs began: Enter returns there on the next row,
+  // like a spreadsheet, so Tab-Tab-Enter fills row after row (P1).
+  let tabStartCol = null;
+  let restoringFocus = false;
+  // The focused cell's value when it got focus -- what Escape puts back.
+  let editOriginal = "";
+  // The class drives the look: in ready mode the caret and the text
+  // highlight are hidden, so a selected cell reads as a selected CELL (its
+  // ring), not as selected text inside it.
+  function setEditing(next) {
+    editing = next;
+    shell.classList.toggle("is-editing", next);
+  }
+  /** A cell control whose text typing can replace (not a checkbox, select or date). */
+  const isTextCell = (el) => (el instanceof HTMLInputElement && ["text", "number"].includes(el.type)) || el instanceof HTMLTextAreaElement;
+  /** Empty a cell and save it, as Excel's Delete does. */
+  function clearCell(control) {
+    if (control instanceof HTMLInputElement && control.type === "checkbox") control.checked = false;
+    else control.value = "";
+    control.dispatchEvent(new Event("change", { bubbles: true }));
+  }
+
+  // `link` cells store an object id; this map turns it into the object's
+  // current title for display / copy / sort. Filled once on mount and after
+  // any edit — a title that changes elsewhere refreshes on the next reopen,
+  // which is enough for a reference column.
+  let titleById = new Map();
+  let titlesInFlight = false;
+  const resolveTitle = (id) => titleById.get(id);
+  /** Referenced object ids across every `link` column that we don't have a
+   * title for yet. */
+  function unresolvedLinkIds() {
+    const ids = new Set();
+    for (const column of store.table?.columns ?? []) {
+      if (column.type !== "link") continue;
+      for (const row of store.table.rows) {
+        const id = row.cells[column.id];
+        if (typeof id === "string" && id && !titleById.has(id)) ids.add(id);
+      }
+    }
+    return ids;
+  }
+  async function refreshLinkTitles() {
+    if (titlesInFlight || unresolvedLinkIds().size === 0) return;
+    titlesInFlight = true;
+    try {
+      const objects = await context.data.objects.query({ limit: 5000 });
+      titleById = new Map(objects.map((object) => [object.id, object.title || t("Untitled")]));
+    } catch { /* leave ids showing */ }
+    finally { titlesInFlight = false; }
+    render();
+  }
+
+  const root = element("div", { className: "ntbl" });
+  root.append(element("style", { textContent: styles }));
+  const shell = element("div", { className: "ntbl-shell" });
+  root.append(shell);
+  shell.addEventListener("mousedown", onGridMouseDown);
+  // The control a click is landing on. Leaving a header input commits it on
+  // blur, before the click's focus arrives, and that commit rebuilds the grid
+  // with focus on <body>: the clicked cell was destroyed, the next Tab walked
+  // into the sidebar and typing ended up in another note (round 2, 01.10).
+  // render() hands focus to this control when nothing in the grid has it.
+  let pressedFocusKey;
+  shell.addEventListener("pointerdown", (event) => {
+    pressedFocusKey = event.target instanceof Element ? event.target.closest("[data-focus-key]")?.dataset.focusKey : undefined;
+    setTimeout(() => { pressedFocusKey = undefined; }, 0);
+  }, true);
+  shell.addEventListener("focusin", (event) => {
+    if (restoringFocus) return;
+    setEditing(false);
+    editOriginal = "value" in event.target ? event.target.value : "";
+  });
+  shell.addEventListener("input", () => setEditing(true));
+  shell.addEventListener("dblclick", (event) => {
+    const control = event.target instanceof Element ? event.target.closest("td[data-row-id] input, td[data-row-id] textarea") : null;
+    if (!control) return;
+    setEditing(true);
+    // A double-click selects the word under the pointer; Excel puts the
+    // caret there instead.
+    try { control.setSelectionRange(control.selectionEnd, control.selectionEnd); } catch { /* no caret on this input type */ }
+  });
+  // Dragging out part of a cell's text is editing: keep that selection
+  // visible (ready mode hides it) and let Ctrl+C copy just that part.
+  shell.addEventListener("mouseup", () => {
+    const control = document.activeElement;
+    if (!isTextCell(control) || !control.closest("td[data-row-id]")) return;
+    try {
+      if (control.selectionStart !== control.selectionEnd && !(control.selectionStart === 0 && control.selectionEnd === control.value.length)) setEditing(true);
+    } catch { /* number inputs have no caret info */ }
+  });
+  shell.addEventListener("contextmenu", (event) => {
+    const td = event.target instanceof Element ? event.target.closest("td[data-row-id]") : null;
+    if (!td) return;
+    event.preventDefault();
+    showRangeMenu(event.clientX, event.clientY, td.dataset.rowId, td.dataset.colId);
+  });
+
+  function setSort(next) { sort = next; render(); }
+  function setFilter(columnId, value) { filters[columnId] = value; render(); }
+  function showColumnMenu(columnId, x, y) { openMenu = { columnId, x, y }; render(); }
+  function hideColumnMenu() { if (openMenu) { openMenu = null; render(); } }
+  // Row/column id are the cell that was actually right-clicked, not the
+  // (possibly bigger) selection — rangeMenu_ needs both: the selection for
+  // merge/unmerge, this specific cell for insert/duplicate row/column.
+  function showRangeMenu(x, y, rowId, colId) { rangeMenu = { x, y, rowId, colId }; render(); }
+  function hideRangeMenu() { if (rangeMenu) { rangeMenu = null; render(); } }
+
+  // Resolved against the RENDERED view (post-sort, post-filter) — the same
+  // row order render() draws into <tbody> — not storage order. Merge
+  // creation/lookup (mergeCells, rangeMenu_) deliberately still resolves
+  // storage-order indices on its own; only this function's callers see the
+  // view-order result.
+  function getSelectionRange() { return resolveSelection(visibleRows(store.table, filters, sort, resolveTitle), store.table.columns, selection); }
+
+  // Selection is a pure highlight state — it never touches `table`, so it
+  // must never rebuild the grid's DOM. A full render() here would tear down
+  // and recreate every cell's <input>, including the one the mousedown that
+  // started this very selection just focused — the exact "click a cell,
+  // can't type into it" bug class. Toggling classes on the existing <td>s
+  // (and refreshing only the format-bar overlay, which doesn't touch
+  // cellInput nodes) keeps every input's DOM identity — and focus — intact.
+  // The fill handle is position:fixed, so it does not move when the grid is
+  // scrolled sideways or the page scrolls — re-read the anchor cell's rect
+  // and reposition it on any scroll under `root` (capture: scroll doesn't
+  // bubble) and on window scroll/resize.
+  function repositionFillHandle() {
+    if (selection) updateFillHandle(getSelectionRange());
+  }
+  root.addEventListener("scroll", repositionFillHandle, true);
+  window.addEventListener("scroll", repositionFillHandle, true);
+  window.addEventListener("resize", repositionFillHandle);
+
+  function updateSelectionVisuals() {
+    const range = getSelectionRange();
+    for (const td of shell.querySelectorAll("td[data-row-id]")) {
+      const rowId = td.dataset.rowId;
+      const colId = td.dataset.colId;
+      const inRange = Boolean(range && range.rowIds.includes(rowId) && range.columnIds.includes(colId));
+      td.classList.toggle("is-selected", inRange);
+      td.classList.toggle("is-sel-top", inRange && rowId === range.rowIds[0]);
+      td.classList.toggle("is-sel-bottom", inRange && rowId === range.rowIds[range.rowIds.length - 1]);
+      td.classList.toggle("is-sel-left", inRange && colId === range.columnIds[0]);
+      td.classList.toggle("is-sel-right", inRange && colId === range.columnIds[range.columnIds.length - 1]);
+    }
+    // Header / row-handle highlight when the selection covers a full column
+    // or a full row.
+    const fullCol = Boolean(range && range.rowIds.length === visibleRows(store.table, filters, sort, resolveTitle).length);
+    const fullRow = Boolean(range && range.columnIds.length === store.table.columns.length);
+    for (const th of shell.querySelectorAll("th[data-col-id]")) {
+      th.classList.toggle("is-col-selected", fullCol && range.columnIds.includes(th.dataset.colId));
+    }
+    for (const tr of shell.querySelectorAll("tr[data-row-id]")) {
+      tr.querySelector("td.ntbl-td-handle")?.classList.toggle("is-row-selected", fullRow && range.rowIds.includes(tr.dataset.rowId));
+    }
+    root.querySelector(".ntbl-format-bar-overlay")?.remove();
+    if (range && (range.rowIds.length > 1 || range.columnIds.length > 1)) {
+      const anchorTd = shell.querySelector(`td[data-row-id="${CSS.escape(range.rowIds[0])}"][data-col-id="${CSS.escape(range.columnIds[0])}"]`);
+      if (anchorTd instanceof HTMLElement) {
+        const rect = anchorTd.getBoundingClientRect();
+        const overlay = element("div", { className: "ntbl-format-bar-overlay" });
+        const bar = formattingToolbar(store, range);
+        bar.style.left = `${Math.max(8, rect.left)}px`;
+        bar.style.top = `${formatBarTop(rect, range)}px`;
+        overlay.append(bar);
+        root.append(overlay);
+      }
+    }
+    updateFillHandle(range);
+  }
+  // The format bar sits above the selection unless that would cover the
+  // column headers (P1/CP84); then it goes under the selection's last row.
+  function formatBarTop(anchorRect, range) {
+    const headerBottom = shell.querySelector("thead")?.getBoundingClientRect().bottom ?? 0;
+    const above = anchorRect.top - 44;
+    if (above >= Math.max(8, headerBottom)) return above;
+    const lastTd = shell.querySelector(`td[data-row-id="${CSS.escape(range.rowIds[range.rowIds.length - 1])}"]`);
+    return (lastTd?.getBoundingClientRect().bottom ?? anchorRect.bottom) + 6;
+  }
+  // The small square at the bottom-right corner of the selection, dragged
+  // to fill — lives on `root` like the other overlays above, rebuilt on
+  // every selection change (cheap: one element, no grid touched).
+  function updateFillHandle(range) {
+    root.querySelector(".ntbl-fill-handle")?.remove();
+    if (!range) return;
+    const lastTd = shell.querySelector(`td[data-row-id="${CSS.escape(range.rowIds[range.rowIds.length - 1])}"][data-col-id="${CSS.escape(range.columnIds[range.columnIds.length - 1])}"]`);
+    if (!(lastTd instanceof HTMLElement)) return;
+    const rect = lastTd.getBoundingClientRect();
+    const handle = element("div", { className: "ntbl-fill-handle" });
+    handle.style.left = `${rect.right - 4}px`;
+    handle.style.top = `${rect.bottom - 4}px`;
+    handle.addEventListener("mousedown", (event) => {
+      if (event.button !== 0) return;
+      event.preventDefault();
+      event.stopPropagation();
+      fillDrag = { source: range, overRowId: null };
+    });
+    // Excel's double-click: fill down as far as the rows next to it have
+    // data — every contiguous visible row below that holds something in a
+    // column outside the source.
+    handle.addEventListener("dblclick", (event) => {
+      event.preventDefault();
+      const rows = visibleRows(store.table, filters, sort, resolveTitle);
+      let end = rows.findIndex((row) => row.id === range.rowIds[range.rowIds.length - 1]);
+      if (end === -1) return;
+      const hasNeighbourData = (row) => Object.entries(row.cells).some(([columnId, value]) =>
+        !range.columnIds.includes(columnId) && value !== "" && value !== null && value !== undefined && value !== false);
+      while (end + 1 < rows.length && hasNeighbourData(rows[end + 1])) end += 1;
+      const targetRows = computeFillTargetRows(range, rows[end].id);
+      if (targetRows) void store.apply(fillRange(store.table, range, targetRows, { series: true }));
+    });
+    root.append(handle);
+  }
+  function startSelection(rowId, colId, extend) {
+    if (extend && selection) selection = { ...selection, focusRow: rowId, focusCol: colId };
+    else selection = { anchorRow: rowId, anchorCol: colId, focusRow: rowId, focusCol: colId };
+    updateSelectionVisuals();
+  }
+  function extendSelection(rowId, colId) {
+    if (!selection) return;
+    selection = { ...selection, focusRow: rowId, focusCol: colId };
+    updateSelectionVisuals();
+  }
+  // Whole-column / whole-row selection: span every visible row (resp. every
+  // column) and pin the other axis to the clicked id. `extend` (shift-click)
+  // keeps the existing anchor on the pinned axis so a second click grows a
+  // contiguous block of columns / rows.
+  function selectColumn(colId, extend) {
+    const visIds = visibleRows(store.table, filters, sort, resolveTitle).map((row) => row.id);
+    if (!visIds.length) return;
+    const first = visIds[0];
+    const last = visIds[visIds.length - 1];
+    selection = extend && selection
+      ? { ...selection, anchorRow: first, focusRow: last, focusCol: colId }
+      : { anchorRow: first, anchorCol: colId, focusRow: last, focusCol: colId };
+    updateSelectionVisuals();
+  }
+  function selectRow(rowId, extend) {
+    const colIds = store.table.columns.map((column) => column.id);
+    if (!colIds.length) return;
+    const first = colIds[0];
+    const last = colIds[colIds.length - 1];
+    selection = extend && selection
+      ? { ...selection, anchorCol: first, focusCol: last, focusRow: rowId }
+      : { anchorRow: rowId, anchorCol: first, focusRow: rowId, focusCol: last };
+    updateSelectionVisuals();
+  }
+
+  function onGridMouseDown(event) {
+    if (event.button !== 0) return; // only a left-click starts/moves selection
+    const td = event.target instanceof Element ? event.target.closest("td[data-row-id]") : null;
+    if (!td) return;
+    dragging = true;
+    // Deferred: at mousedown time document.activeElement is still the
+    // PREVIOUSLY focused control — the browser moves focus to the clicked
+    // target as part of mousedown's own default action, which runs AFTER
+    // this handler returns. Calling startSelection (and its render(), which
+    // replaces the whole grid) synchronously would read the stale
+    // activeElement, restore focus to the OLD cell, and detach the node the
+    // pending native focus step was about to target — the project's known
+    // "double click needed to edit a cell" bug class. Deferring lets the
+    // browser finish focusing the newly-clicked cell first.
+    const rowId = td.dataset.rowId;
+    const colId = td.dataset.colId;
+    const extend = event.shiftKey;
+    queueMicrotask(() => startSelection(rowId, colId, extend));
+  }
+  // Extend on document `mousemove` + elementFromPoint, NOT `mouseover` on the
+  // grid: pressing on a cell starts a native text-selection drag inside that
+  // cell's <input>, and while that drag is live the browser stops dispatching
+  // mouseover/mouseenter on sibling elements — so a mouseover-based extend
+  // never sees the second cell and the range stays 1x1. The column/row/fill
+  // drags in this file already use this pattern for the same reason.
+  function onGridDragMove(event) {
+    if (!dragging) return;
+    const target = document.elementFromPoint(event.clientX, event.clientY);
+    const td = target instanceof Element ? target.closest("td[data-row-id]") : null;
+    if (!td) return;
+    extendSelection(td.dataset.rowId, td.dataset.colId);
+  }
+  // Suppress the native text-selection drag while a cell-range drag is in
+  // progress, so it neither fights the range highlight visually nor leaves a
+  // stray text selection in the last input. selectstart (not mousedown) —
+  // preventing it here does not block click-to-focus or click-to-edit.
+  function onGridSelectStart(event) { if (dragging) event.preventDefault(); }
+  function onDocumentMouseUp() { dragging = false; }
+  document.addEventListener("mousemove", onGridDragMove);
+  document.addEventListener("selectstart", onGridSelectStart);
+  document.addEventListener("mouseup", onDocumentMouseUp);
+
+  function startColumnDrag(columnId) {
+    columnDrag = { id: columnId, overId: null };
+    const th = shell.querySelector(`th[data-col-id="${CSS.escape(columnId)}"]`);
+    th?.classList.add("is-dragging");
+  }
+  // Pointer capture isn't used here (unlike the resize handle below) because
+  // this needs to know which OTHER header the pointer is currently over —
+  // capturing would route every move back to the handle instead.
+  function onColumnDragMove(event) {
+    if (!columnDrag) return;
+    const target = document.elementFromPoint(event.clientX, event.clientY);
+    const overTh = target instanceof Element ? target.closest("th[data-col-id]") : null;
+    for (const el of shell.querySelectorAll(".ntbl-th.is-drag-over")) el.classList.remove("is-drag-over");
+    const overId = overTh && overTh.dataset.colId !== columnDrag.id ? overTh.dataset.colId : null;
+    columnDrag.overId = overId;
+    if (overId) overTh.classList.add("is-drag-over");
+  }
+  function onColumnDragEnd() {
+    if (!columnDrag) return;
+    const { id, overId } = columnDrag;
+    columnDrag = null;
+    for (const el of shell.querySelectorAll(".ntbl-th.is-dragging, .ntbl-th.is-drag-over")) el.classList.remove("is-dragging", "is-drag-over");
+    if (overId) void store.apply(reorderColumn(store.table, id, overId));
+  }
+  document.addEventListener("mousemove", onColumnDragMove);
+  document.addEventListener("mouseup", onColumnDragEnd);
+
+  function startRowDrag(rowId) {
+    rowDrag = { id: rowId, overId: null };
+    const tr = shell.querySelector(`tr[data-row-id="${CSS.escape(rowId)}"]`);
+    tr?.classList.add("is-dragging");
+  }
+  function onRowDragMove(event) {
+    if (!rowDrag) return;
+    const target = document.elementFromPoint(event.clientX, event.clientY);
+    const overTr = target instanceof Element ? target.closest("tr[data-row-id]") : null;
+    for (const el of shell.querySelectorAll("tr.is-drag-over")) el.classList.remove("is-drag-over");
+    const overId = overTr && overTr.dataset.rowId !== rowDrag.id ? overTr.dataset.rowId : null;
+    rowDrag.overId = overId;
+    if (overId) overTr.classList.add("is-drag-over");
+  }
+  function onRowDragEnd() {
+    if (!rowDrag) return;
+    const { id, overId } = rowDrag;
+    rowDrag = null;
+    for (const el of shell.querySelectorAll("tr.is-dragging, tr.is-drag-over")) el.classList.remove("is-dragging", "is-drag-over");
+    if (overId) void store.apply(reorderRow(store.table, id, overId));
+  }
+  document.addEventListener("mousemove", onRowDragMove);
+  document.addEventListener("mouseup", onRowDragEnd);
+
+  // Downward-only, matching `fillRange`'s doc: the target is every VISIBLE
+  // row strictly below the selection's last row, up to wherever the pointer
+  // is when it releases.
+  function computeFillTargetRows(source, overRowId) {
+    const visIds = visibleRows(store.table, filters, sort, resolveTitle).map((row) => row.id);
+    const sourceEndIndex = visIds.indexOf(source.rowIds[source.rowIds.length - 1]);
+    const overIndex = visIds.indexOf(overRowId);
+    if (sourceEndIndex === -1 || overIndex === -1 || overIndex <= sourceEndIndex) return null;
+    return { rowIds: visIds.slice(sourceEndIndex + 1, overIndex + 1), columnIds: source.columnIds };
+  }
+  function onFillDragMove(event) {
+    if (!fillDrag) return;
+    const target = document.elementFromPoint(event.clientX, event.clientY);
+    const td = target instanceof Element ? target.closest("td[data-row-id]") : null;
+    for (const el of shell.querySelectorAll(".is-fill-preview")) el.classList.remove("is-fill-preview");
+    fillDrag.overRowId = td?.dataset.rowId ?? null;
+    if (!fillDrag.overRowId) return;
+    const targetRows = computeFillTargetRows(fillDrag.source, fillDrag.overRowId);
+    if (!targetRows) return;
+    for (const rowId of targetRows.rowIds) {
+      for (const colId of targetRows.columnIds) {
+        shell.querySelector(`td[data-row-id="${CSS.escape(rowId)}"][data-col-id="${CSS.escape(colId)}"]`)?.classList.add("is-fill-preview");
+      }
+    }
+  }
+  function onFillDragEnd() {
+    if (!fillDrag) return;
+    const { source, overRowId } = fillDrag;
+    fillDrag = null;
+    for (const el of shell.querySelectorAll(".is-fill-preview")) el.classList.remove("is-fill-preview");
+    const targetRows = overRowId ? computeFillTargetRows(source, overRowId) : null;
+    if (targetRows) void store.apply(fillRange(store.table, source, targetRows, { series: true }));
+  }
+  document.addEventListener("mousemove", onFillDragMove);
+  document.addEventListener("mouseup", onFillDragEnd);
+
+  // A right-click panel closes like any other popover: a click outside it,
+  // or Escape. Both listen on the document because the panel is positioned
+  // fixed, outside the scroll container it was opened from.
+  function onDocumentPointerDown(event) {
+    const target = event.target;
+    // E14B-LISTENERS (Hive #2): an embedded grid shares the document with the
+    // note. A press anywhere else drops the cell selection, so a multi-cell
+    // Delete/Ctrl+C/Ctrl+D cannot hit these cells while you type in the note.
+    if (embedded && !(target instanceof Node && root.contains(target))) {
+      hideColumnMenu();
+      hideRangeMenu();
+      if (selection) { selection = null; dragging = false; render(); }
+      return;
+    }
+    if (openMenu && !(target instanceof Element && target.closest(".ntbl-colmenu, .ntbl-th-menu"))) hideColumnMenu();
+    if (rangeMenu && !(target instanceof Element && target.closest(".ntbl-rangemenu"))) hideRangeMenu();
+  }
+  // Ctrl/Cmd+C and Delete/Backspace are only intercepted for a MULTI-cell
+  // range. A single selected cell is also how "click to edit" looks (see
+  // startSelection) — leaving that case alone means normal text editing
+  // (typing, native copy of a text selection inside one input, Backspace
+  // while typing) keeps working exactly as it did in 0.2.0, untouched by any
+  // of this. Paste is handled separately, in onGridPaste below — it needs to
+  // fire even for a single selected cell (that is the common case when
+  // pasting a whole column from Excel), which this multi-cell-only guard
+  // would otherwise block.
+  function onDocumentKeyDown(event) {
+    // E14B-LISTENERS (Hive #2): keys typed in the note are not ours.
+    if (embedded && !(event.target instanceof Node && root.contains(event.target))) return;
+    if (event.key === "Escape") {
+      const control = document.activeElement;
+      // Escape while typing: throw the typing away, back to ready (Excel).
+      if (editing && isTextCell(control) && shell.contains(control) && control.closest("td[data-row-id]")) {
+        event.preventDefault();
+        control.value = editOriginal;
+        setEditing(false);
+        control.select();
+      }
+      hideColumnMenu();
+      hideRangeMenu();
+      return;
+    }
+
+    // Ctrl/Cmd+Z anywhere inside this table's own surface undoes the last
+    // edit through the table's own history, not whatever the browser thinks
+    // is undoable — previously this fell through to native undo and ate
+    // characters out of the note title instead of restoring a deleted
+    // column/row (there was no undo stack here at all).
+    // While typing in a cell, Ctrl+Z is that text's own undo (as in Excel) --
+    // it used to roll back the previous, unrelated table edit instead and then
+    // redraw the grid over what was being typed.
+    const typingInCell = editing && event.target instanceof Element && event.target.closest("td[data-row-id]");
+    if ((event.ctrlKey || event.metaKey) && !event.shiftKey && event.key.toLowerCase() === "z" && !typingInCell && event.target instanceof Element && shell.contains(event.target)) {
+      event.preventDefault();
+      void store.undo();
+      return;
+    }
+
+    const focused = document.activeElement;
+    const isGridControl = focused instanceof Element && shell.contains(focused) && ["INPUT", "TEXTAREA", "SELECT"].includes(focused.tagName);
+
+    // F2: start editing the cell in place, caret at the end — Excel's key.
+    if (isGridControl && event.key === "F2") {
+      event.preventDefault();
+      setEditing(true);
+      try { focused.setSelectionRange(focused.value.length, focused.value.length); } catch { /* no caret on this input type */ }
+      return;
+    }
+
+    // Move the active cell. Tab/Enter always (Excel's "confirm and move
+    // on"). Arrow keys always while the cell is only selected (not typed
+    // into yet — see `editing`), and while editing only when the caret
+    // cannot travel further inside the input in that direction.
+    function caretAtEdge(dir) {
+      if (focused instanceof HTMLSelectElement) return false; // arrows change the option
+      if (!editing && focused.closest("td[data-row-id]")) return true;
+      if (focused instanceof HTMLInputElement && focused.type === "checkbox") return true;
+      if (!(focused instanceof HTMLInputElement || focused instanceof HTMLTextAreaElement)) return true;
+      let start, end;
+      try { start = focused.selectionStart; end = focused.selectionEnd; } catch { return true; }
+      if (start === null || end === null) return true; // number input: no caret info
+      if (start !== end) return false; // a fragment is selected
+      return (dir === "up" || dir === "left") ? start === 0 : end === focused.value.length;
+    }
+    let move = null;
+    if (isGridControl && (event.key === "Tab" || event.key === "Enter")) {
+      move = event.key === "Enter" ? [event.shiftKey ? -1 : 1, 0] : [0, event.shiftKey ? -1 : 1];
+    } else if (isGridControl && !event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey) {
+      if (event.key === "ArrowUp" && caretAtEdge("up")) move = [-1, 0];
+      else if (event.key === "ArrowDown" && caretAtEdge("down")) move = [1, 0];
+      else if (event.key === "ArrowLeft" && caretAtEdge("left")) move = [0, -1];
+      else if (event.key === "ArrowRight" && caretAtEdge("right")) move = [0, 1];
+    }
+    if (move) {
+      // The cell with the caret decides where Tab/Enter go. The selection
+      // state alone was not enough: after renaming a header it was empty, the
+      // handler bailed out before preventDefault, and Tab/Enter walked out of
+      // the grid into the sidebar, so the next rows were typed into another
+      // note (round 2 test, 01.10).
+      const focusTd = focused.closest("td[data-row-id]");
+      const range = focusTd
+        ? { rowIds: [focusTd.dataset.rowId], columnIds: [focusTd.dataset.colId] }
+        : getSelectionRange();
+      if (!range) return;
+      const visibleIds = visibleRows(store.table, filters, sort, resolveTitle).map((row) => row.id);
+      const columnIds = store.table.columns.map((column) => column.id);
+      let rowIndex = visibleIds.indexOf(range.rowIds[range.rowIds.length - 1]);
+      let colIndex = columnIds.indexOf(range.columnIds[range.columnIds.length - 1]);
+      if (rowIndex === -1 || colIndex === -1) return;
+      // Tab and Enter belong to the grid: they never move focus out of it.
+      if (focusTd && (event.key === "Tab" || event.key === "Enter")) event.preventDefault();
+      // Tab past the last column wraps to the next row, like a spreadsheet.
+      if (event.key === "Tab" && !event.shiftKey && colIndex === columnIds.length - 1 && rowIndex < visibleIds.length - 1) { move = [1, -colIndex]; tabStartCol = null; }
+      else if (event.key === "Tab" && event.shiftKey && colIndex === 0 && rowIndex > 0) { move = [-1, columnIds.length - 1]; tabStartCol = null; }
+      // Only while still on the row the Tabs ran along: a click elsewhere ends the run.
+      const currentRowId = visibleIds[rowIndex];
+      if (tabStartCol?.rowId !== currentRowId) tabStartCol = null;
+      if (event.key === "Tab") tabStartCol ??= { rowId: currentRowId, colId: columnIds[colIndex] };
+      else if (event.key === "Enter" && tabStartCol && columnIds.includes(tabStartCol.colId)) colIndex = columnIds.indexOf(tabStartCol.colId);
+      if (event.key !== "Tab") tabStartCol = null;
+      rowIndex += move[0];
+      colIndex += move[1];
+      // Enter on the last row grows the table, so filling a list never stalls
+      // (P1). Only unsorted and unfiltered, where the new last row is the one shown last.
+      const growRow = event.key === "Enter" && !event.shiftKey && rowIndex === visibleIds.length && !sort && Object.values(filters).every((value) => value === "");
+      if (rowIndex < 0 || (rowIndex >= visibleIds.length && !growRow) || colIndex < 0 || colIndex >= columnIds.length) return;
+      event.preventDefault();
+      if (growRow) {
+        focused.blur();
+        void store.apply(addRow(store.table));
+        visibleIds.push(store.table.rows[store.table.rows.length - 1].id);
+      }
+      const nextRowId = visibleIds[rowIndex];
+      const nextColId = columnIds[colIndex];
+      // Commit the cell being left BEFORE looking up the next one: its
+      // `change` rebuilds the whole grid, so a control found first would be a
+      // detached node by the time it got focus — which is how the second
+      // Enter/arrow after an edit used to drop focus and scroll the page.
+      focused.blur();
+      startSelection(nextRowId, nextColId, false);
+      const nextTd = shell.querySelector(`td[data-row-id="${CSS.escape(nextRowId)}"][data-col-id="${CSS.escape(nextColId)}"]`);
+      const control = nextTd?.querySelector("input, textarea, select");
+      if (control instanceof HTMLElement) {
+        control.focus();
+        // Arriving by keyboard selects the whole value, so typing replaces it.
+        try { control.select(); } catch { /* not every control can */ }
+      }
+      return;
+    }
+
+    const meta = event.ctrlKey || event.metaKey;
+    const key = event.key.toLowerCase();
+
+    // Ctrl/Cmd+A: select the whole grid — but only once the focused cell's
+    // own text is already all-selected or empty, so the first press still
+    // selects text inside the cell the way it does anywhere else.
+    if (meta && key === "a" && isGridControl) {
+      const f = focused;
+      let textAllSelected = true; // checkbox/number inputs have no caret — go straight to grid select
+      try {
+        if (f && "value" in f && typeof f.selectionStart === "number") {
+          textAllSelected = f.value === "" || (f.selectionStart === 0 && f.selectionEnd === f.value.length);
+        }
+      } catch { /* no caret info: treat as ready for grid select */ }
+      if (!textAllSelected) return;
+      const visibleIds = visibleRows(store.table, filters, sort, resolveTitle).map((row) => row.id);
+      const columnIds = store.table.columns.map((column) => column.id);
+      if (!visibleIds.length || !columnIds.length) return;
+      event.preventDefault();
+      startSelection(visibleIds[0], columnIds[0], false);
+      extendSelection(visibleIds[visibleIds.length - 1], columnIds[columnIds.length - 1]);
+      return;
+    }
+
+    // Ctrl/Cmd+D / +R: fill down / right. A multi-row (resp. multi-column)
+    // selection fills from its own first row (column); a single row/column
+    // fills from the neighbour just before it. Same literal copy as the
+    // fill handle — no reference rewriting.
+    if (meta && (key === "d" || key === "r")) {
+      const range = getSelectionRange();
+      if (!range) return;
+      event.preventDefault();
+      const visibleIds = visibleRows(store.table, filters, sort, resolveTitle).map((row) => row.id);
+      const columnIds = store.table.columns.map((column) => column.id);
+      if (key === "d") {
+        if (range.rowIds.length > 1) {
+          void store.apply(fillRange(store.table, { rowIds: [range.rowIds[0]], columnIds: range.columnIds }, { rowIds: range.rowIds.slice(1), columnIds: range.columnIds }));
+        } else {
+          const i = visibleIds.indexOf(range.rowIds[0]);
+          if (i > 0) void store.apply(fillRange(store.table, { rowIds: [visibleIds[i - 1]], columnIds: range.columnIds }, { rowIds: [range.rowIds[0]], columnIds: range.columnIds }));
+        }
+      } else {
+        if (range.columnIds.length > 1) {
+          void store.apply(fillRange(store.table, { rowIds: range.rowIds, columnIds: [range.columnIds[0]] }, { rowIds: range.rowIds, columnIds: range.columnIds.slice(1) }));
+        } else {
+          const i = columnIds.indexOf(range.columnIds[0]);
+          if (i > 0) void store.apply(fillRange(store.table, { rowIds: range.rowIds, columnIds: [columnIds[i - 1]] }, { rowIds: range.rowIds, columnIds: [range.columnIds[0]] }));
+        }
+      }
+      return;
+    }
+
+    const range = getSelectionRange();
+    if (!range) return;
+    // One cell, not being edited: Ctrl+C copies the cell itself, the way
+    // Excel copies a selected cell — unless the user dragged out a piece of
+    // its text, which then copies natively.
+    if (range.rowIds.length === 1 && range.columnIds.length === 1) {
+      let textSelected = false;
+      try { textSelected = isGridControl && focused.selectionStart !== focused.selectionEnd && !(focused.selectionStart === 0 && focused.selectionEnd === focused.value.length); } catch { /* no caret info */ }
+      const inCell = isGridControl && focused.closest("td[data-row-id]");
+      if (!inCell || editing) return;
+      if (meta && (key === "c" || key === "x") && !textSelected) {
+        event.preventDefault();
+        void navigator.clipboard.writeText(cellsToTsv(resolveFormulas(store.table), range, resolveTitle)).then(() => {
+          if (key === "x") clearCell(focused);
+        }, () => {
+          context.ui.notice(t("Could not copy: the clipboard is unavailable."));
+        });
+      } else if (event.key === "Delete") {
+        event.preventDefault();
+        clearCell(focused);
+      } else if (event.key === "Backspace" && isTextCell(focused)) {
+        // Excel: clear and start typing.
+        event.preventDefault();
+        focused.value = "";
+        setEditing(true);
+      } else if (!meta && !event.altKey && event.key.length === 1 && isTextCell(focused)) {
+        // Typing into a selected (not edited) cell replaces it, as in Excel;
+        // the key itself then lands in the emptied input.
+        focused.value = "";
+        setEditing(true);
+      }
+      return;
+    }
+    // Past the 1x1 early-return the range is explicitly multi-cell, so
+    // Ctrl+C / Delete act on the range unconditionally. No activeElement
+    // guard: focus always sits in a cell <input> after selecting (every
+    // cell is one), and shift-click leaves a text selection there — the old
+    // guard read that as "mid-edit" and fell through to a single-cell copy.
+    // Single-cell / mid-typing is the 1x1 case, already returned above.
+    if (meta && (key === "c" || key === "x")) {
+      event.preventDefault();
+      void navigator.clipboard.writeText(cellsToTsv(resolveFormulas(store.table), range, resolveTitle)).then(() => {
+        if (key === "x") void store.apply(clearRangeCells(store.table, range));
+      }, () => {
+        context.ui.notice(t("Could not copy: the clipboard is unavailable."));
+      });
+      return;
+    }
+    if (event.key === "Delete" || event.key === "Backspace") {
+      event.preventDefault();
+      void store.apply(clearRangeCells(store.table, range));
+    }
+  }
+  document.addEventListener("mousedown", onDocumentPointerDown);
+  document.addEventListener("keydown", onDocumentKeyDown);
+
+  // The native `paste` event, not a Ctrl+V keydown + navigator.clipboard
+  // read: this needs to decide SYNCHRONOUSLY, before the browser's own
+  // paste lands, whether to take over — an async clipboard read can only
+  // preventDefault too late, after the browser has already pasted natively.
+  // `event.clipboardData` gives that synchronous read.
+  //
+  // A single selected cell is the common case for pasting a whole Excel
+  // column (one cell clicked, not a range dragged first), so this fires for
+  // single cells too — restricted to clipboard content that actually looks
+  // like a grid (more than one line, or tab-separated), so pasting a short
+  // one-line snippet mid-edit inside a text cell still lands at the caret
+  // via the browser's own paste instead of overwriting the whole cell.
+  function onGridPaste(event) {
+    const range = getSelectionRange();
+    if (!range) return;
+    const clipboardText = event.clipboardData?.getData("text/plain") ?? "";
+    if (!clipboardText) return;
+    const isMultiCell = range.rowIds.length > 1 || range.columnIds.length > 1;
+    const looksLikeGrid = /\r\n|\n|\t/.test(clipboardText.replace(/\r?\n$/, ""));
+    if (!isMultiCell && !looksLikeGrid) {
+      // A single value into a selected (not edited) cell replaces it, as in
+      // Excel; while editing it lands at the caret, natively.
+      const control = document.activeElement;
+      if (!editing && isTextCell(control) && shell.contains(control) && control.closest("td[data-row-id]")) {
+        event.preventDefault();
+        control.value = clipboardText.replace(/\r?\n$/, "");
+        control.dispatchEvent(new Event("change", { bubbles: true }));
+      }
+      return;
+    }
+    event.preventDefault();
+    void store.apply(applyTsvPaste(store.table, range, clipboardText, sort, filters));
+  }
+  shell.addEventListener("paste", onGridPaste);
+
+  function render() {
+    // Filtering as you type calls this on every keystroke — see the
+    // `dataset.focusKey` comment on the filter input above. Save which
+    // control had focus (and where its caret was) before the rebuild
+    // destroys it, then hand both back once the new one exists.
+    const focused = document.activeElement;
+    const focusKey = focused instanceof HTMLElement && shell.contains(focused) ? focused.dataset.focusKey : pressedFocusKey;
+    const caretRange = focusKey && "selectionStart" in focused ? [focused.selectionStart, focused.selectionEnd] : null;
+    // A table rewritten by sync while a cell is being typed into: keep what
+    // was typed on screen (it is committed on blur, as always) instead of
+    // silently swapping it for the pulled value. Only for that reload — on an
+    // ordinary render the stored value is the truth (undo, a commit's own
+    // normalisation).
+    const typed = focusKey && store.remoteReload && editing && focused.type !== "checkbox" && "value" in focused ? focused.value : null;
+
+    shell.replaceChildren();
+    if (store.loading) { shell.append(text("p", t("Loading…"), "ntbl-empty")); return; }
+    if (store.error) { shell.append(text("p", embedded ? `This table could not be read (${store.error}). Edit its source above to fix it.` : store.error, "ntbl-empty")); return; }
+
+    const raw = store.table;
+    // Everything below display/export/sums/sort works from the resolved
+    // view — formula cells replaced by their computed value. The cell
+    // EDITOR still needs the "=" source, so it is handed the raw row too.
+    const table = resolveFormulas(raw);
+    const rawById = new Map(raw.rows.map((row) => [row.id, row]));
+
+    if (table.columns.length === 0) {
+      shell.append(text("p", t("No columns yet."), "ntbl-empty"));
+    } else {
+      const scroll = element("div", { className: "ntbl-scroll" });
+      const tableEl = element("table", { className: "ntbl-table" });
+      const thead = element("thead");
+      const headRow = element("tr");
+      headRow.append(element("th", { className: "ntbl-th ntbl-th-spacer" })); // aligns with each row's leading drag-handle cell
+      for (const column of table.columns) headRow.append(columnHeader(store, column, sort, setSort, filters, setFilter, showColumnMenu, startColumnDrag, selectColumn));
+      headRow.append(element("th", { className: "ntbl-th ntbl-th-spacer" }));
+      thead.append(headRow);
+      // Pin the table to the sum of its column widths. Under width:max-content
+      // Chromium sized every column from its <input>'s natural width (~170px),
+      // so a column could never be narrower than that whatever its th said —
+      // a "No." column was as wide as a text one. With an explicit width the
+      // fixed layout takes each th's width as given.
+      tableEl.style.width = `${SPACER_WIDTH * 2 + table.columns.reduce((sum, column) => sum + (column.width ?? DEFAULT_COLUMN_WIDTH), 0)}px`;
+      tableEl.append(thead);
+
+      const tbody = element("tbody");
+      const rows = visibleRows(table, filters, sort, resolveTitle);
+      const range = getSelectionRange();
+      const merges = table.merges ?? [];
+      const coveredCells = new Set();
+      for (const m of merges) {
+        for (let r = m.startRowIndex; r < m.startRowIndex + m.rowSpan; r++) {
+          for (let c = m.startColIndex; c < m.startColIndex + m.colSpan; c++) {
+            if (r === m.startRowIndex && c === m.startColIndex) continue;
+            coveredCells.add(`${r}:${c}`);
+          }
+        }
+      }
+      for (const [rowIndex, row] of rows.entries()) {
+        const tr = element("tr");
+        tr.dataset.rowId = row.id;
+        const handleCell = element("td", { className: "ntbl-td ntbl-td-handle" });
+        // Click the handle cell to select the whole row; shift-click to span
+        // a block of rows. A real drag ends in a store.apply/render that
+        // replaces this node, so a trailing click here is inert.
+        handleCell.addEventListener("click", (event) => selectRow(row.id, event.shiftKey));
+        const rowDragHandle = element("button", { type: "button", className: "ntbl-row-drag", title: t("Drag to move this row"), textContent: "⠿" });
+        rowDragHandle.addEventListener("mousedown", (event) => {
+          if (event.button !== 0) return;
+          event.preventDefault();
+          event.stopPropagation();
+          if (sort) { context.ui.notice(t("Clear the active sort first to reorder rows.")); return; }
+          startRowDrag(row.id);
+        });
+        handleCell.append(rowDragHandle);
+        tr.append(handleCell);
+        for (const [colIndex, column] of table.columns.entries()) {
+          if (coveredCells.has(`${rowIndex}:${colIndex}`)) continue;
+          const style = (table.styles ?? {})[`${row.id}:${column.id}`];
+          const inRange = range && range.rowIds.includes(row.id) && range.columnIds.includes(column.id);
+          const classes = ["ntbl-td"];
+          if (style?.bold) classes.push("is-bold");
+          if (inRange) {
+            classes.push("is-selected");
+            if (row.id === range.rowIds[0]) classes.push("is-sel-top");
+            if (row.id === range.rowIds[range.rowIds.length - 1]) classes.push("is-sel-bottom");
+            if (column.id === range.columnIds[0]) classes.push("is-sel-left");
+            if (column.id === range.columnIds[range.columnIds.length - 1]) classes.push("is-sel-right");
+          }
+          const td = element("td", { className: classes.join(" ") });
+          td.dataset.rowId = row.id;
+          td.dataset.colId = column.id;
+          if (style?.color) td.dataset.color = style.color;
+          const covering = merges.find((m) => m.startRowIndex === rowIndex && m.startColIndex === colIndex);
+          if (covering) { td.rowSpan = covering.rowSpan; td.colSpan = covering.colSpan; }
+          td.append(cellInput(store, row, column, resolveTitle, rawById.get(row.id)));
+          tr.append(td);
+        }
+        const removeCell = element("td", { className: "ntbl-td ntbl-td-remove" });
+        const removeButton = element("button", { type: "button", className: "ntbl-row-remove", title: t("Remove row"), textContent: "×" });
+        if (rowHasData(row)) {
+          armOnFirstClick(removeButton, {
+            armedTitle: t("Click again to delete this row"),
+            run: () => void store.apply(removeRow(store.table, row.id)),
+          });
+        } else {
+          removeButton.addEventListener("click", () => void store.apply(removeRow(store.table, row.id)));
+        }
+        removeCell.append(removeButton);
+        tr.append(removeCell);
+        tbody.append(tr);
+      }
+      tableEl.append(tbody);
+
+      // A totals footer, only when there is at least one number column to
+      // total — an all-text table has nothing to sum and would just show a
+      // row of dashes. Sums use the currently VISIBLE rows, same as the
+      // "Showing X of Y" hint below: a totals row that silently included
+      // filtered-out rows would disagree with what is on screen.
+      if (table.columns.some((column) => column.type === "number")) {
+        const sums = columnSums(rows, table.columns);
+        const tfoot = element("tfoot");
+        const footRow = element("tr", { className: "ntbl-foot" });
+        footRow.append(element("td", { className: "ntbl-td" }));
+        for (const column of table.columns) {
+          const cell = element("td", { className: "ntbl-td ntbl-foot-cell" });
+          if (column.type === "number") {
+            const sum = sums[column.id] ?? 0;
+            // Round off float-accumulation noise (e.g. summing many decimals
+            // can land on 733.56000000001) before display — a footer total
+            // that looks precise-but-wrong is worse than one rounded to a
+            // sane number of decimals. 6 places is far past what any column
+            // format shows, so this never trims a real formatted value.
+            const clean = Math.round(sum * 1e6) / 1e6;
+            cell.textContent = column.format ? formatNumber(clean, column.format, store.context?.i18n?.locale) : String(clean);
+          }
+          footRow.append(cell);
+        }
+        footRow.append(element("td", { className: "ntbl-td" }));
+        tfoot.append(footRow);
+        tableEl.append(tfoot);
+      }
+
+      scroll.append(tableEl);
+      shell.append(scroll);
+
+      if (rows.length !== table.rows.length) {
+        shell.append(text("p", `Showing ${rows.length} of ${table.rows.length} rows.`, "ntbl-hint"));
+      }
+    }
+
+    const actions = element("div", { className: "ntbl-actions" });
+    const addRowButton = element("button", { type: "button", className: "ntbl-button", textContent: t("+ Row") });
+    addRowButton.disabled = table.columns.length === 0;
+    addRowButton.addEventListener("click", () => void store.apply(addRow(store.table)));
+    const addColumnButton = element("button", { type: "button", className: "ntbl-button", textContent: t("+ Column") });
+    addColumnButton.addEventListener("click", () => void store.apply(addColumn(store.table, {})));
+    // Same Blob + <a download> pattern plugins/builtin/domain-plugin-ui.tsx
+    // and CoreOnlyApp.tsx already use for Markdown export — no Tauri
+    // save-dialog call needed, no new permission.
+    const exportButton = element("button", { type: "button", className: "ntbl-button", textContent: t("Export CSV") });
+    exportButton.disabled = table.columns.length === 0;
+    exportButton.addEventListener("click", () => {
+      const blob = new Blob([toCsv(table, resolveTitle)], { type: "text/csv" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `${(table.name || "table").replace(/[\\/:*?"<>|]/g, "_")}.csv`;
+      link.click();
+      URL.revokeObjectURL(url);
+      context.ui.notice(`Downloaded "${link.download}".`);
+    });
+    const lockButton = element("button", {
+      type: "button",
+      className: table.lockWidths ? "ntbl-button ntbl-button--on" : "ntbl-button",
+      textContent: table.lockWidths ? t("🔒 Widths locked") : t("Lock widths"),
+      title: table.lockWidths ? t("Column widths are locked — click to allow resizing again.") : t("Freeze every column width and hide the resize handles."),
+    });
+    lockButton.disabled = table.columns.length === 0;
+    lockButton.addEventListener("click", () => void store.apply({ ...store.table, lockWidths: !store.table.lockWidths }));
+    actions.append(addRowButton, addColumnButton, lockButton, exportButton);
+    shell.append(actions);
+
+    if (focusKey) {
+      const next = shell.querySelector(`[data-focus-key="${CSS.escape(focusKey)}"]`);
+      if (next instanceof HTMLElement) {
+        // The same cell getting its focus back is not a new visit: keep
+        // whichever mode (ready / editing) it was in.
+        restoringFocus = true;
+        next.focus();
+        restoringFocus = false;
+        if (typed !== null) next.value = typed;
+        if (caretRange && "setSelectionRange" in next) {
+          try { next.setSelectionRange(caretRange[0], caretRange[1]); } catch { /* not every input type supports it (e.g. type=number) */ }
+        }
+      }
+    }
+
+    // The popup lives on `root`, not `shell`, so it survives the
+    // `shell.replaceChildren()` above — it is removed and rebuilt here
+    // instead, every render, same as the rest of the grid.
+    root.querySelector(".ntbl-colmenu-overlay")?.remove();
+    const menuColumn = openMenu && table.columns.find((column) => column.id === openMenu.columnId);
+    if (openMenu && !menuColumn) openMenu = null;
+    if (menuColumn) {
+      const overlay = element("div", { className: "ntbl-colmenu-overlay" });
+      const panel = columnMenu(store, menuColumn, sort, setSort, filters, setFilter);
+      // Clamped so a column near the right or bottom edge does not open a
+      // panel partly off-screen.
+      const left = Math.min(openMenu.x, window.innerWidth - 240);
+      const top = Math.min(openMenu.y, window.innerHeight - 220);
+      panel.style.left = `${Math.max(8, left)}px`;
+      panel.style.top = `${Math.max(8, top)}px`;
+      overlay.append(panel);
+      root.append(overlay);
+    }
+
+    // Same "lives on root, rebuilt every render" mechanics as the column
+    // menu overlay above — this one is keyed off the selection instead of
+    // openMenu, and only appears for a range bigger than one cell.
+    root.querySelector(".ntbl-format-bar-overlay")?.remove();
+    const formatRange = getSelectionRange();
+    if (formatRange && (formatRange.rowIds.length > 1 || formatRange.columnIds.length > 1)) {
+      const anchorTd = shell.querySelector(`td[data-row-id="${CSS.escape(formatRange.rowIds[0])}"][data-col-id="${CSS.escape(formatRange.columnIds[0])}"]`);
+      if (anchorTd instanceof HTMLElement) {
+        const rect = anchorTd.getBoundingClientRect();
+        const overlay = element("div", { className: "ntbl-format-bar-overlay" });
+        const bar = formattingToolbar(store, formatRange);
+        bar.style.left = `${Math.max(8, rect.left)}px`;
+        bar.style.top = `${formatBarTop(rect, formatRange)}px`;
+        overlay.append(bar);
+        root.append(overlay);
+      }
+    }
+    updateFillHandle(formatRange);
+
+    root.querySelector(".ntbl-rangemenu-overlay")?.remove();
+    if (rangeMenu) {
+      const rowStillExists = table.rows.some((row) => row.id === rangeMenu.rowId);
+      const colStillExists = table.columns.some((column) => column.id === rangeMenu.colId);
+      if (!rowStillExists || !colStillExists) {
+        rangeMenu = null;
+      } else {
+        const selRange = getSelectionRange();
+        // The menu's row/column actions always target the actually
+        // right-clicked cell; merge/unmerge only cares about the current
+        // selection, or falls back to that single cell when there is none
+        // (e.g. right-clicking straight onto a merged cell with no drag).
+        const range = selRange && selRange.rowIds.includes(rangeMenu.rowId) && selRange.columnIds.includes(rangeMenu.colId)
+          ? selRange
+          : { rowIds: [rangeMenu.rowId], columnIds: [rangeMenu.colId] };
+        const overlay = element("div", { className: "ntbl-rangemenu-overlay" });
+        const panel = rangeMenu_(store, range, sort, filters, resolveTitle, rangeMenu.rowId, rangeMenu.colId, hideRangeMenu);
+        panel.style.left = `${Math.max(8, Math.min(rangeMenu.x, window.innerWidth - 200))}px`;
+        panel.style.top = `${Math.max(8, Math.min(rangeMenu.y, window.innerHeight - 100))}px`;
+        overlay.append(panel);
+        root.append(overlay);
+      }
+    }
+  }
+
+  const stop = store.onChange(() => { render(); void refreshLinkTitles(); });
+  // Sync applies arrive as `workspace.changed` (no per-object event).
+  const workspaceWatch = context.events.on("workspace.changed", () => void store.refreshIfChanged());
+  void store.load();
+  container.append(root);
+  return {
+    dispose: () => {
+      stop();
+      workspaceWatch?.dispose();
+      document.removeEventListener("mousedown", onDocumentPointerDown);
+      document.removeEventListener("keydown", onDocumentKeyDown);
+      document.removeEventListener("mouseup", onDocumentMouseUp);
+      document.removeEventListener("mousemove", onGridDragMove);
+      document.removeEventListener("selectstart", onGridSelectStart);
+      document.removeEventListener("mousemove", onColumnDragMove);
+      document.removeEventListener("mouseup", onColumnDragEnd);
+      document.removeEventListener("mousemove", onRowDragMove);
+      document.removeEventListener("mouseup", onRowDragEnd);
+      document.removeEventListener("mousemove", onFillDragMove);
+      document.removeEventListener("mouseup", onFillDragEnd);
+      root.removeEventListener("scroll", repositionFillHandle, true);
+      window.removeEventListener("scroll", repositionFillHandle, true);
+      window.removeEventListener("resize", repositionFillHandle);
+      root.remove();
+    },
+  };
+}
+
+// ------------------------------------------------------------------ CSS
+//
+// Public token contract (--notible-*) only, no colour literals, so
+// `scripts/plugin-css-token-check.mjs` passes and the grid follows the
+// user's theme. Same house rules as every other builtin-shaped surface: an
+// outline instead of a fill, no card inside a card.
+const styles = `
+.ntbl { color: var(--notible-text); font-size: 13px; min-width: 0; }
+/* E14B-EMBED (Hive #2): a table inside a note scrolls in its own box, so a
+   long one does not push the rest of the note a screen away.
+   It sits inside Core's <pre>, so the text font and wrapping are reset
+   (the mono font also cut the column names short). */
+.nt-embed { max-width: 100%; max-height: 480px; overflow: auto; padding: 0 12px 12px; font-family: var(--notible-font-sans); white-space: normal; line-height: normal; }
+/* minmax(0,1fr) keeps the shell (lead text, summary, actions) at the
+   container's width; the wide table below overflows it and Core's own
+   .core-container-slot — the one scroll box, height-bounded to the viewport —
+   does the scrolling on BOTH axes. */
+.ntbl-shell { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; align-content: start; }
+.ntbl-empty, .ntbl-hint { margin: 0; color: var(--notible-muted); font-size: 12px; }
+/* A real grid, not a hairline table: this is a spreadsheet-style tool
+   with sortable/filterable/mergeable columns, so it reads better as an
+   actual grid than the restraint a note's inline Markdown table uses.
+   Every cell gets a full border; header cells get the stronger one. */
+/* NOT a scroll container. It used to be overflow-x:auto, which trapped the
+   horizontal overflow in a box as tall as the whole table — so its scrollbar
+   sat past the end of a long table and you had to scroll to the bottom to
+   reach it. Adding overflow-y on top just stacked a second vertical scrollbar
+   inside Core's. Let the table overflow straight through to
+   .core-container-slot instead; the sticky header then sticks to that box. */
+.ntbl-scroll { min-width: 0; }
+/* table-layout: fixed makes column width follow the th width, not the
+   width the browser's auto algorithm thinks a column's content needs —
+   under the default auto layout, an explicit width/min-width on a th is
+   only ever a hint the algorithm can still widen a column past, never
+   something it lets a column shrink below its content's natural size. That
+   was the resize handle's actual bug: growing a column worked, narrowing it
+   below its starting content-driven width silently did nothing.
+
+   width:max-content (not 100%) so widening one column grows the TABLE and
+   the .ntbl-scroll wrapper scrolls, instead of the fixed layout stealing
+   that width back from its neighbours. No min-width:100% — that forced the
+   table wide and brought the redistribution straight back. Every column
+   without an explicit width falls back to the .ntbl-th 140px. */
+.ntbl-table { border-collapse: collapse; width: max-content; table-layout: fixed; }
+/* Sticky header (top) and leading handle column (left) — position:sticky
+   still lets an absolutely-positioned child (the resize handle) anchor to
+   this cell, so it does not conflict with the old position:relative. */
+.ntbl-th { position: sticky; top: 0; z-index: 2; box-sizing: border-box; vertical-align: top; padding: 6px 6px 8px; border: 1px solid var(--notible-border); width: 140px; overflow: hidden; background: var(--notible-surface); }
+/* The header rested half a pixel below the scroll box's edge, and rows showed
+   through that strip while scrolling. Tuck it 1px under
+   the edge and cover a few pixels above with its own background. */
+.ntbl-th { top: -1px; box-shadow: 0 -4px 0 var(--notible-surface); }
+/* A narrow column (a "No." / "L.p." column) keeps its name readable: the
+   header's buttons step aside as it shrinks. Right-click on the header still
+   opens the column menu.
+   The name row is the container: size containment does not apply to a
+   table cell, so the th itself cannot be one. */
+.ntbl-th-name { container-type: inline-size; }
+@container (max-width: 110px) { .ntbl-th-drag, .ntbl-th-remove, .ntbl-th-badge { display: none; } }
+@container (max-width: 60px) { .ntbl-th-menu { display: none; } }
+/* No spin arrows: in a narrow number column they took half the cell, and a
+   click meant for the cell stepped its value instead. */
+.ntbl-cell-input[type="number"] { appearance: textfield; }
+.ntbl-cell-input[type="number"]::-webkit-inner-spin-button, .ntbl-cell-input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+.ntbl-th.is-drag-over { border-left: 2px solid var(--notible-accent); }
+.ntbl-th.is-dragging { opacity: .5; }
+.ntbl-th.is-col-selected { background: var(--notible-hover); }
+.ntbl-th-name { cursor: pointer; }
+.ntbl-th-spacer { min-width: 0; width: 28px; }
+.ntbl-th-spacer:first-child { left: 0; z-index: 3; }
+.ntbl-th-name { display: flex; align-items: center; gap: 4px; margin-bottom: 4px; }
+.ntbl-th-input { flex: 1; min-width: 0; border: 0; background: none; padding: 2px; color: var(--notible-text); font: inherit; font-weight: 700; }
+.ntbl-th-badge { flex: none; color: var(--notible-accent); font-size: 11px; }
+.ntbl-th-drag, .ntbl-th-menu, .ntbl-th-remove { flex: none; border: 0; background: none; padding: 2px 4px; color: var(--notible-muted); cursor: pointer; font-size: 12px; }
+.ntbl-th-drag { cursor: grab; }
+.ntbl-th-drag:hover, .ntbl-th-menu:hover, .ntbl-th-remove:hover { color: var(--notible-text); }
+/* A thin strip on the trailing edge, dragged to resize the column — wide
+   enough to grab without a pixel-perfect click, invisible until hovered so
+   it does not read as a stray vertical line across every header. */
+.ntbl-th-resize { position: absolute; top: 0; right: -3px; bottom: 0; width: 6px; cursor: col-resize; touch-action: none; z-index: 1; }
+.ntbl-th-resize:hover, .ntbl-th-resize:active { background: var(--notible-accent); }
+.ntbl-th-type, .ntbl-th-filter, .ntbl-th-options { width: 100%; box-sizing: border-box; border: 1px solid var(--notible-border); border-radius: 6px; background: var(--notible-surface); padding: 4px 6px; color: var(--notible-text); font: inherit; font-size: 12px; }
+.ntbl-colmenu-row .ntbl-th-type { width: auto; flex: 1; }
+.ntbl-th-decimals { width: 48px; box-sizing: border-box; border: 1px solid var(--notible-border); border-radius: 6px; background: var(--notible-surface); padding: 4px 6px; color: var(--notible-text); font: inherit; font-size: 12px; }
+.ntbl-th-symbol { width: 56px; box-sizing: border-box; border: 1px solid var(--notible-border); border-radius: 6px; background: var(--notible-surface); padding: 4px 6px; color: var(--notible-text); font: inherit; font-size: 12px; }
+.ntbl-cell-formula:not(:focus) { color: var(--notible-muted); }
+.ntbl-link-cell { display: flex; align-items: center; gap: 2px; }
+.ntbl-cell-link { flex: 1; min-width: 0; }
+.ntbl-cell-link--unresolved { outline: 1px dashed var(--notible-danger); outline-offset: -1px; }
+.ntbl-link-open { flex: none; border: 0; background: none; color: var(--notible-accent); cursor: pointer; font-size: 12px; padding: 2px 4px; }
+.ntbl-link-open:disabled { color: var(--notible-faint); cursor: default; }
+/* The right-click column panel: fixed so it floats above the scrollable
+   grid regardless of where the column that opened it is scrolled to. */
+.ntbl-colmenu { position: fixed; z-index: 30; display: grid; gap: 8px; width: 224px; border: 1px solid var(--notible-border); border-radius: 9px; background: var(--notible-surface); padding: 10px; box-shadow: 0 14px 34px rgb(0 0 0 / 18%); }
+.ntbl-colmenu-row { display: grid; gap: 4px; }
+.ntbl-colmenu-label { color: var(--notible-muted); font-size: 11px; letter-spacing: .03em; text-transform: uppercase; }
+.ntbl-colmenu-sort { display: flex; gap: 4px; }
+.ntbl-colmenu-btn { border: 1px solid var(--notible-border); border-radius: 6px; background: none; padding: 4px 10px; color: var(--notible-muted); font: inherit; font-size: 12px; cursor: pointer; }
+.ntbl-colmenu-btn:hover { color: var(--notible-text); }
+.ntbl-colmenu-btn.is-active { border-color: var(--notible-accent); color: var(--notible-accent); }
+.ntbl-td { padding: 0; border: 1px solid var(--notible-border-subtle); }
+.ntbl-td.is-bold input, .ntbl-td.is-bold textarea, .ntbl-td.is-bold select { font-weight: 700; }
+.ntbl-td[data-color="yellow"] { background: var(--notible-highlight-yellow); }
+.ntbl-td[data-color="green"] { background: var(--notible-highlight-green); }
+.ntbl-td[data-color="blue"] { background: var(--notible-highlight-blue); }
+.ntbl-td[data-color="pink"] { background: var(--notible-highlight-pink); }
+.ntbl-td[data-color="purple"] { background: var(--notible-highlight-purple); }
+.ntbl-td[data-color="orange"] { background: var(--notible-highlight-orange); }
+/* A ring around the outside of the range, not a border on every cell in
+   it — four directional classes, one accent-colored border each, so
+   interior cell-to-cell borders stay the plain grid lines. */
+.ntbl-td.is-selected { background: var(--notible-selected-soft); }
+.ntbl-td.is-sel-top { border-top: 2px solid var(--notible-accent); }
+.ntbl-td.is-sel-bottom { border-bottom: 2px solid var(--notible-accent); }
+.ntbl-td.is-sel-left { border-left: 2px solid var(--notible-accent); }
+.ntbl-td.is-sel-right { border-right: 2px solid var(--notible-accent); }
+/* The host's global input reset in core-only.css outweighs a bare
+   .ntbl-cell-input, so every cell's input was getting a 36px-tall bordered
+   rounded box on --core-raised — a card stacked on top of each grid cell, in
+   a colour that isn't ours. These compound selectors (0,3,0) beat that reset
+   and hand the cell back to its own .ntbl-td border, which collapse-borders
+   into plain grid lines. The :not() is only there for the specificity bump. */
+.ntbl-td .ntbl-cell-input:not([type="checkbox"]),
+.ntbl-td .ntbl-cell-textarea:not([hidden]),
+.ntbl-th .ntbl-th-input:not([type="checkbox"]) {
+  min-height: 0;
+  min-block-size: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+}
+/* Ready mode (a cell selected, not being typed in): no caret, no text
+   highlight -- the accent ring says which cell is selected. */
+.ntbl-shell:not(.is-editing) .ntbl-td .ntbl-cell-input, .ntbl-shell:not(.is-editing) .ntbl-td .ntbl-cell-textarea { caret-color: transparent; }
+.ntbl-shell:not(.is-editing) .ntbl-td .ntbl-cell-input::selection, .ntbl-shell:not(.is-editing) .ntbl-td .ntbl-cell-textarea::selection { background: transparent; }
+.ntbl-cell-input { width: 100%; box-sizing: border-box; border: 0; background: none; padding: 6px 8px; color: var(--notible-text); font: inherit; }
+.ntbl-cell-input:focus-visible { outline: 2px solid var(--notible-accent); outline-offset: -2px; }
+.ntbl-cell-textarea { width: 100%; box-sizing: border-box; resize: vertical; border: 0; background: none; padding: 6px 8px; color: var(--notible-text); font: inherit; }
+.ntbl-cell-textarea:focus-visible { outline: 2px solid var(--notible-accent); outline-offset: -2px; }
+.ntbl-colmenu-row--inline { display: flex; }
+.ntbl-colmenu-checkbox { display: flex; align-items: center; gap: 6px; color: var(--notible-text); font-size: 12px; cursor: pointer; }
+.ntbl-format-bar { position: fixed; z-index: 31; display: flex; align-items: center; gap: 4px; border: 1px solid var(--notible-border); border-radius: 9px; background: var(--notible-surface); padding: 6px; box-shadow: 0 14px 34px rgb(0 0 0 / 18%); }
+.ntbl-format-btn { border: 1px solid var(--notible-border); border-radius: 6px; background: none; padding: 4px 10px; color: var(--notible-text); font: inherit; font-size: 12px; cursor: pointer; }
+.ntbl-format-btn:hover { border-color: var(--notible-accent); }
+.ntbl-format-swatch { width: 20px; height: 20px; border: 1px solid var(--notible-border); border-radius: 5px; cursor: pointer; }
+.ntbl-format-swatch[data-color="yellow"] { background: var(--notible-highlight-yellow); }
+.ntbl-format-swatch[data-color="green"] { background: var(--notible-highlight-green); }
+.ntbl-format-swatch[data-color="blue"] { background: var(--notible-highlight-blue); }
+.ntbl-format-swatch[data-color="pink"] { background: var(--notible-highlight-pink); }
+.ntbl-format-swatch[data-color="purple"] { background: var(--notible-highlight-purple); }
+.ntbl-format-swatch[data-color="orange"] { background: var(--notible-highlight-orange); }
+.ntbl-rangemenu { position: fixed; z-index: 31; display: grid; min-width: 160px; padding: 5px; border: 1px solid var(--notible-border); border-radius: 9px; background: var(--notible-surface); box-shadow: 0 14px 34px rgb(0 0 0 / 18%); }
+.ntbl-rangemenu-btn { display: block; width: 100%; border: 0; border-radius: 6px; padding: 8px 9px; background: none; color: var(--notible-text); text-align: left; font: inherit; font-size: 13px; cursor: pointer; }
+.ntbl-rangemenu-btn:hover:not(:disabled) { background: var(--notible-hover); }
+.ntbl-rangemenu-btn:disabled { color: var(--notible-faint); cursor: not-allowed; }
+.ntbl-rangemenu-btn--danger { color: var(--notible-danger); }
+.ntbl-rangemenu-btn--danger:hover:not(:disabled) { background: var(--notible-danger-surface); }
+.ntbl-format-swatch--none { background: var(--notible-surface); }
+.ntbl-check { margin: 0 8px; accent-color: var(--notible-accent); }
+.ntbl-td-remove { text-align: center; }
+.ntbl-row-remove { border: 0; background: none; padding: 4px 8px; color: var(--notible-faint); cursor: pointer; }
+.ntbl-row-remove:hover { color: var(--notible-danger); }
+/* Delete buttons stay out of sight until the row/header is pointed at or reached by keyboard (CE68). */
+.ntbl-row-remove, .ntbl-th-remove { opacity: 0; }
+tr:hover .ntbl-row-remove, tr:focus-within .ntbl-row-remove, th:hover .ntbl-th-remove, th:focus-within .ntbl-th-remove { opacity: 1; }
+.ntbl-danger-armed { color: var(--notible-danger) !important; font-weight: 600; }
+/* The leading per-row handle cell, sticky on the left the same way the
+   header is sticky on top — a long row stays identifiable by its drag grip
+   even when scrolled sideways past its own first data column. */
+.ntbl-td-handle { position: sticky; left: 0; z-index: 1; width: 28px; text-align: center; background: var(--notible-surface); cursor: pointer; }
+.ntbl-td-handle.is-row-selected { background: var(--notible-hover); }
+.ntbl-row-drag { border: 0; background: none; padding: 4px; color: var(--notible-faint); cursor: grab; font-size: 12px; }
+.ntbl-row-drag:hover { color: var(--notible-text); }
+tr.is-dragging { opacity: .5; }
+tr.is-drag-over > td { border-top: 2px solid var(--notible-accent); }
+/* The drag-to-fill handle at the selection's bottom-right corner, and the
+   dashed preview it paints over cells it would fill on release. */
+.ntbl-fill-handle { position: fixed; z-index: 32; width: 8px; height: 8px; background: var(--notible-accent); border: 1px solid var(--notible-surface); border-radius: 1px; cursor: crosshair; }
+.ntbl-td.is-fill-preview { outline: 1px dashed var(--notible-accent); outline-offset: -1px; }
+.ntbl-rangemenu-sep { height: 1px; margin: 4px 2px; background: var(--notible-border); }
+.ntbl-foot-cell { padding: 6px 8px; text-align: right; color: var(--notible-text); font-weight: 600; }
+.ntbl-actions { display: flex; gap: 8px; }
+.ntbl-button { align-self: flex-start; border: 1px solid var(--notible-border); border-radius: 7px; background: none; padding: 6px 12px; color: var(--notible-muted); font: inherit; font-size: 12px; cursor: pointer; }
+.ntbl-button:hover:not(:disabled) { border-color: var(--notible-accent); color: var(--notible-text); }
+.ntbl-button:disabled { opacity: .5; cursor: default; }
+.ntbl-button--on { border-color: var(--notible-accent); color: var(--notible-text); background: var(--notible-hover); }
+`;
+
+export default {
+  manifest: {
+    id: "notible.tables",
+    name: "Notible Tables",
+    version: "0.7.1",
+    apiVersion: "1.24",
+    description: "Simple spreadsheets inside Notible: a grid you can sort, filter, format and fill quickly, kept as an ordinary item you can link from any note.",
+    author: "Notible",
+    permissions: ["data.read", "data.write", "workspace.ui", "editor.extension"],
+  },
+
+  onload(context) {
+
+    if (context.i18n?.t) t = (key, values) => context.i18n.t(key, values);
+    this._disposables = [];
+
+    // A blank icon/name is better than "unknown type"; failing this must not
+    // take the plugin down with it — tables still work untyped.
+    void context.data.types.upsert(TABLE_TYPE, JSON.stringify({ fields: [] }), "table").catch(() => {});
+
+    // Puts "Data table" in the "+" menu beside "New note"/"New task" — Core
+    // reads `creates` off any active plugin's commands, so this needed no
+    // Core change at all (unlike the object-tab registration below). Any
+    // `creates` command is ALSO offered from the in-note "/" menu (Core's
+    // own convention, shared with New task/New project/Whiteboard) — and
+    // Core's own built-in "/table" already means something completely
+    // different: `coreCommands.ts`'s `{ id: "table", name: "Table" }` inserts
+    // an inline Markdown table at the caret. Naming this "Table" too would
+    // put two identically-labelled "/table" entries in the same menu, one of
+    // which silently creates an unrelated object elsewhere instead of
+    // inserting anything — "Data table" keeps it findable without reading as
+    // the same command.
+    this._disposables.push(context.commands.register({
+      id: "new-table",
+      name: t("New data table"),
+      description: t("Create a table you can fill with typed columns and link into any note. Not the same as the \"/table\" Markdown table — this is its own object."),
+      // No self-navigation here, on purpose: a `creates` command's caller
+      // decides what happens with the object it hands back — Core's own "+"
+      // menu (`addPluginObject`) already opens it, and doing so again here
+      // would double-navigate. See work-models.ts/whiteboard.ts for the same
+      // convention.
+      // slashMenu: false: in a note, "/New data table" is the inline one below.
+      creates: { objectType: TABLE_TYPE, label: t("Data table"), icon: "table", slashMenu: false },
+      execute: async () => context.data.objects.create({
+        type: TABLE_TYPE,
+        title: t("New table"),
+        props: serializeTable(blankTable(parseTable({ props: "{}" }))),
+      }),
+    }));
+
+    // E14B-EMBED (Hive #2): "/New data table" in a note writes a
+    // ```notible-table fence; the grid below draws it and writes every edit
+    // straight back into the note. Persistent, so typing in a cell does not
+    // tear the grid down when the note re-renders around it.
+    this._disposables.push(context.commands.register({
+      id: "insert-inline",
+      name: t("New data table"),
+      description: t("A table kept inside this note: typed columns, sorting, fill."),
+      insertsBlock: { language: EMBED_LANGUAGE },
+      execute: () => serializeEmbedded(blankTable(parseTable({ props: "{}" }))),
+    }));
+    this._disposables.push(context.editor.registerCodeBlockRenderer(EMBED_LANGUAGE, (block) => {
+      const store = new EmbeddedTableStore(context, block);
+      const shell = document.createElement("div");
+      shell.className = "nt-embed";
+      block.container.appendChild(shell);
+      const mount = mountGrid(context, shell, store, { embedded: true });
+      // nq-ready hides the raw fence text; a broken source stays visible to fix.
+      if (!store.error) block.container.classList.add("nq-ready");
+      return { dispose: () => { mount.dispose(); shell.remove(); } };
+    }, { persistent: true }));
+
+    // The grid itself: mounted whenever a table object is opened, by row
+    // click or by a [[wikilink]] to it. `"table"` is in Core's
+    // `OBJECT_TAB_TYPES` allowlist for this purpose.
+    this._disposables.push(context.views.registerObjectTab({
+      id: "grid",
+      label: t("Table"),
+      objectTypes: [TABLE_TYPE],
+      mount: (container, tabContext) => mountGrid(context, container, new TableStore(context, tabContext.objectId)),
+    }));
+  },
+
+  onunload() {
+    for (const disposable of this._disposables ?? []) disposable.dispose?.();
+    this._disposables = [];
+  },
+};

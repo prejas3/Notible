@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">Notible mark</title><desc id="desc">The Notible notch with its focus point.</desc>
+  <path fill="#F3F0E8" d="M80 48c-17.673 0-32 14.327-32 32v224c0 17.673 14.327 32 32 32h72c17.673 0 32 14.327 32 32v64c0 17.673 14.327 32 32 32h216c17.673 0 32-14.327 32-32V216c0-17.673-14.327-32-32-32h-64c-17.673 0-32-14.327-32-32V80c0-17.673-14.327-32-32-32H80Z"/>
+  <circle cx="256" cy="256" r="36" fill="#7557E8"/>
+</svg>

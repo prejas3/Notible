@@ -1,0 +1,1392 @@
+/* Typewriter surface — tokens only (var(--notible-*)); see docs/ui-baseline.md.
+   Manuscript/Codex/Progress/Board render as pages of one ring-bound "binder"
+   (.tw-binder / .tw-binder-book below) — physical texture (die-cut tab,
+   stitched spine, punch holes) instead of a second accent hue, so the one
+   coloured ribbon this file allows itself is still just var(--notible-accent). */
+
+/* The dashboard is app UI, not a full-bleed catalogue — cap it to a
+   comfortable working column instead of the whole viewport. */
+[data-plugin-view="notible.typewriter"] {
+  max-width: min(100%, 1160px);
+  width: 100%;
+  min-width: 0;
+  container-type: inline-size;
+}
+
+/* Board is a spatial canvas, not a reading column — let it use the full
+   available width instead of the reading-column cap the other tabs want. */
+[data-plugin-view="notible.typewriter"].tw-surface-wide {
+  max-width: 100%;
+}
+
+/* Fallback tab strip for the (currently unreachable) case this surface ever
+   mounts without a forced pane — objectTabs in typewriter.ts always sets
+   one today. Kept minimal on purpose: real Manuscript/Codex/Progress/Board
+   navigation is Core's shared object-tab bar, not this file's job. */
+.tw-tabs {
+  display: flex;
+  gap: 18px;
+  border-bottom: 1px solid var(--notible-border-subtle);
+  margin-bottom: 16px;
+}
+
+.tw-tabs button {
+  border: 0;
+  border-bottom: 2px solid transparent;
+  padding: 0 0 8px;
+  background: transparent;
+  color: var(--notible-muted);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.tw-tabs button.is-active {
+  border-bottom-color: var(--notible-accent);
+  color: var(--notible-text);
+}
+
+/* Binder: Manuscript/Codex/Progress/Board as pages of one ring-bound folder.
+   Manuscript/Codex/Progress/Board switch via Core's own shared object-tab
+   bar (every object type uses it, not just Typewriter), so there is no
+   second, Typewriter-drawn tab strip here — the binder shows up as page
+   texture only: a die-cut tab, a stitched spine, three punch holes down the
+   left edge. Tokens only, and the one coloured ribbon this file allows
+   itself is still just `--notible-accent` (see the roman-numeral part
+   marker below) — no second hue. */
+.tw-binder-book {
+  position: relative;
+  border: 1px solid var(--notible-border);
+  border-radius: 12px 4px 4px 12px;
+  background: var(--notible-surface);
+  padding: 30px 32px 36px 52px;
+  box-shadow: inset 8px 0 12px -12px rgba(0, 0, 0, 0.22), 0 3px 10px rgba(0, 0, 0, 0.04);
+  /* A minimum, not a hard cap: Codex used to be a sliver until a record was
+     selected, Progress and an empty Manuscript looked tiny next to Board's
+     canvas — this floor keeps all four pages reading as the same size at
+     rest, while a long manuscript or a big board can still grow past it. */
+  min-height: 520px;
+  box-sizing: border-box;
+}
+
+.tw-binder-book::before {
+  content: "";
+  position: absolute;
+  left: 24px;
+  top: 20px;
+  bottom: 20px;
+  width: 1px;
+  background: repeating-linear-gradient(to bottom, var(--notible-border) 0 3px, transparent 3px 10px);
+}
+
+.tw-binder-book::after {
+  content: "";
+  position: absolute;
+  left: 12px;
+  top: 0;
+  bottom: 0;
+  width: 8px;
+  background-image: radial-gradient(circle, var(--notible-surface) 3px, var(--notible-border) 3.6px, transparent 4.2px);
+  background-repeat: repeat-y;
+  background-position: center;
+  background-size: 100% 160px;
+  pointer-events: none;
+}
+
+.tw-binder-page-tab {
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--notible-faint);
+  margin: 0 0 4px;
+}
+
+@media (max-width: 640px) {
+  .tw-binder-book {
+    border-radius: 10px;
+    padding-left: 20px;
+  }
+  .tw-binder-book::before,
+  .tw-binder-book::after {
+    display: none;
+  }
+}
+
+.tw-manuscript {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.tw-manuscript-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.tw-manuscript-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.tw-tree {
+  display: flex;
+  flex-direction: column;
+  counter-reset: tw-part;
+}
+
+/* Ledger read: a part is a heading (roman numeral in the margin, small
+   caps), a chapter is a serif divider line with its own progress bar, a
+   scene is a quiet row under it — three weights and generous air between
+   them, instead of one indented list at a single size and a 34px row. */
+.tw-tree {
+  gap: 2px;
+}
+
+.tw-row[data-tw-kind="part"] {
+  position: relative;
+  counter-increment: tw-part;
+  min-height: auto;
+  padding: 26px 0 10px;
+  border-bottom: none;
+}
+
+.tw-tree > .tw-node:first-child > .tw-row[data-tw-kind="part"] {
+  padding-top: 0;
+}
+
+/* Out of the row's own flex flow and into the card's left gutter (34px of
+   padding on .tw-binder-book) — so the drag handle, twist and title of every
+   row, part included, start at the same left edge. */
+.tw-row[data-tw-kind="part"]::before {
+  content: counter(tw-part, upper-roman);
+  position: absolute;
+  left: -22px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-family: Georgia, "Iowan Old Style", serif;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--notible-accent);
+}
+
+.tw-row[data-tw-kind="part"] .tw-row-title {
+  font-family: var(--notible-font-serif);
+  font-size: 14px;
+  font-weight: 500;
+  letter-spacing: normal;
+  text-transform: none;
+  color: var(--notible-muted);
+}
+
+.tw-row[data-tw-kind="chapter"] {
+  min-height: auto;
+  padding: 18px 0 12px;
+  border-bottom: 1px solid var(--notible-border);
+}
+
+.tw-row[data-tw-kind="chapter"] .tw-row-title {
+  font-family: var(--notible-font-serif);
+  font-size: 14px;
+  font-weight: 500;
+  white-space: normal;
+  gap: 9px;
+}
+
+/* Scenes read as quiet ledger lines under their chapter's serif heading —
+   sans, smaller, more line height than the 34px default row so they don't
+   look like an accidental continuation of the chapter above. */
+.tw-row[data-tw-kind="scene"] {
+  min-height: 40px;
+  padding: 6px 0;
+}
+
+.tw-row[data-tw-kind="scene"] .tw-row-title {
+  font-family: var(--notible-font-serif);
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.tw-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--notible-border-subtle);
+}
+
+.tw-progress-head {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+
+.tw-progress-ring {
+  position: relative;
+  width: 100px;
+  height: 100px;
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.tw-progress-ring-track {
+  fill: none;
+  stroke: var(--notible-border-subtle);
+  stroke-width: 8;
+}
+
+.tw-progress-ring-fill {
+  fill: none;
+  stroke: var(--notible-accent);
+  stroke-width: 8;
+  stroke-linecap: round;
+  transition: stroke-dashoffset .2s;
+}
+
+.tw-progress-ring-pct {
+  position: absolute;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--notible-text);
+  font-variant-numeric: tabular-nums;
+}
+
+.tw-progress-line {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.tw-progress-line strong {
+  font-size: 22px;
+}
+
+/* Ledger rows: label left, control right, dashed rule between entries — a
+   logbook page rather than a settings form. */
+.tw-progress-controls {
+  display: flex;
+  flex-direction: column;
+  margin-top: 4px;
+}
+
+.tw-progress-controls label {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 10px 0;
+  border-bottom: 1px dashed var(--notible-border);
+  color: var(--notible-muted);
+  font-size: 12.5px;
+  font-weight: 500;
+}
+
+.tw-progress-controls label:last-of-type {
+  border-bottom: none;
+}
+
+/* The Select / DatePicker components render one root element; give it room
+   to hold a long option ("theme default") without clipping, but keep it out
+   of the label's own flex-basis so label/control still split the row. */
+.tw-progress-controls label > * {
+  flex: 0 0 auto;
+  width: 200px;
+}
+
+.tw-progress-controls input {
+  height: 34px;
+  padding: 0 8px;
+  border: 0;
+  border-bottom: 1px solid var(--notible-border);
+  background: transparent;
+  color: var(--notible-text);
+  font: inherit;
+}
+
+.tw-progress-hint {
+  font-size: 12px;
+}
+
+.tw-progress-streak {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+  padding: 8px 0;
+  border-bottom: 1px dashed var(--notible-border);
+  font-size: 12.5px;
+  font-weight: 500;
+}
+
+.tw-progress-streak-flame {
+  flex: none;
+  color: var(--notible-muted);
+}
+
+.tw-progress-streak-flame[data-active="true"] {
+  color: var(--notible-warning);
+}
+
+.tw-heatmap {
+  display: flex;
+  gap: 3px;
+  padding: 10px 0;
+  border-bottom: 1px dashed var(--notible-border);
+  overflow-x: auto;
+}
+
+.tw-heatmap-week {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.tw-heatmap-day {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  background: var(--notible-border-subtle);
+}
+
+.tw-heat-zero { background: var(--notible-border-subtle); }
+.tw-heat-low { background: color-mix(in srgb, var(--notible-accent) 30%, transparent); }
+.tw-heat-mid { background: color-mix(in srgb, var(--notible-accent) 60%, transparent); }
+.tw-heat-high { background: var(--notible-accent); }
+
+.tw-progress-compile {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+
+.tw-progress-compile span {
+  flex: 1 1 260px;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.tw-board-hint {
+  font-size: 12px;
+  line-height: 1.45;
+  margin: 0 0 4px;
+  max-width: 60ch;
+}
+
+/* Neutral, compact action button — additive actions (add part/chapter/node,
+   compile) that don't destroy anything and shouldn't read as a warning. */
+.tw-btn {
+  border: 1px solid var(--notible-border);
+  border-radius: 7px;
+  padding: 4px 10px;
+  background: var(--notible-surface);
+  color: var(--notible-text);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.tw-btn:hover:not(:disabled) {
+  background: var(--notible-hover);
+}
+
+.tw-btn:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+/* Red, compact action button — reserved for actually destructive actions. */
+.tw-btn-danger {
+  border: 1px solid var(--notible-danger);
+  border-radius: 7px;
+  padding: 4px 10px;
+  background: var(--notible-danger-surface);
+  color: var(--notible-danger);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.tw-btn-danger:hover:not(:disabled) {
+  background: var(--notible-danger);
+  color: var(--notible-on-accent);
+}
+
+.tw-btn-danger:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.tw-btn-quiet {
+  border: 0;
+  background: transparent;
+  color: var(--notible-accent);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  padding: 4px 0;
+}
+
+.tw-row-bar {
+  flex: 0 0 72px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--notible-border-subtle);
+  overflow: hidden;
+}
+
+.tw-row-bar > span {
+  display: block;
+  height: 100%;
+  background: var(--notible-accent);
+}
+
+.tw-progress-bar {
+  flex-basis: 100%;
+  height: 6px;
+}
+
+.tw-node {
+  display: flex;
+  flex-direction: column;
+}
+
+.tw-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-right: 10px;
+  min-height: 34px;
+  border-bottom: 1px solid var(--notible-border-subtle);
+}
+
+.tw-row-drag {
+  flex: 0 0 auto;
+  cursor: grab;
+  color: var(--notible-muted);
+  font-size: 12px;
+  opacity: 0;
+  transition: opacity 0.1s;
+  touch-action: none;
+}
+
+.tw-row:hover .tw-row-drag {
+  opacity: 1;
+}
+
+.tw-row.is-dragging {
+  opacity: 0.4;
+}
+
+.tw-row.drop-before {
+  box-shadow: inset 0 2px 0 var(--notible-accent);
+}
+
+.tw-row.drop-after {
+  box-shadow: inset 0 -2px 0 var(--notible-accent);
+}
+
+.tw-row.drop-inside {
+  background: var(--notible-surface-hover, var(--notible-border-subtle));
+}
+
+.tw-twist {
+  border: 0;
+  background: transparent;
+  color: var(--notible-muted);
+  cursor: pointer;
+  font-size: 11px;
+  width: 16px;
+  padding: 0;
+}
+
+.tw-row-title {
+  flex: 1 1 auto;
+  min-width: 4rem;
+  text-align: left;
+  border: 0;
+  background: transparent;
+  color: var(--notible-text);
+  font: inherit;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 7px;
+  padding: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tw-row-synopsis {
+  flex: 2 1 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--notible-muted);
+  font-size: 12px;
+}
+
+.tw-row-status {
+  flex: 0 0 auto;
+}
+
+.tw-scene-status-select { width: 7rem; }
+.tw-scene-status-select .nb-control-trigger {
+  height: 28px;
+  padding: 3px 5px 6px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.tw-row-pov {
+  flex: 0 0 auto;
+  color: var(--notible-muted);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.tw-row-count {
+  flex: 0 0 auto;
+  color: var(--notible-muted);
+  font-size: 12px;
+  min-width: 62px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.tw-row-meter {
+  display: grid;
+  grid-template-columns: minmax(54px, 76px) auto;
+  align-items: center;
+  gap: 9px;
+  flex: 0 0 auto;
+}
+
+.tw-menu {
+  position: fixed;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  min-width: 168px;
+  padding: 4px;
+  background: var(--notible-surface);
+  border: 1px solid var(--notible-border);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+}
+
+.tw-menu > div {
+  display: flex;
+  flex-direction: column;
+}
+
+.tw-menu button {
+  border: 0;
+  background: transparent;
+  color: var(--notible-text);
+  font: inherit;
+  text-align: left;
+  padding: 7px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.tw-menu-parent,
+.tw-submenu button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+}
+
+.tw-menu-item {
+  position: relative;
+}
+
+.tw-menu-item > .tw-menu-parent {
+  width: 100%;
+}
+
+/* Lists beside their parent item; same look as the main menu. Overlaps the
+   parent by a couple of pixels so the pointer never crosses a dead gap. */
+.tw-submenu {
+  position: absolute;
+  top: -4px;
+  left: calc(100% - 2px);
+  min-width: 132px;
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.tw-submenu.is-flipped {
+  left: auto;
+  right: calc(100% - 2px);
+}
+
+.tw-menu button:hover {
+  background: var(--notible-surface-hover, var(--notible-border-subtle));
+}
+
+.tw-menu button.is-danger {
+  color: var(--notible-danger, var(--notible-text));
+}
+
+.tw-scene-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 8px 0 12px 40px;
+}
+
+.tw-scene-panel .tw-links {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.tw-menu-label {
+  padding: 6px 10px 2px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--notible-muted);
+}
+
+/* --- Codex ------------------------------------------------------------- */
+
+.tw-codex {
+  display: grid;
+  gap: 22px;
+  min-width: 0;
+}
+
+.tw-codex-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.tw-codex-kinds {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.tw-codex-page-head {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.tw-codex-page-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-left: auto;
+}
+
+.tw-codex-seal {
+  flex: 0 0 auto;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--notible-on-accent);
+  font-family: Georgia, "Iowan Old Style", serif;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.tw-codex-kinds button {
+  border: 1px solid var(--notible-border);
+  border-radius: 20px;
+  background: transparent;
+  color: var(--notible-muted);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 7px 13px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.tw-codex-kinds button.is-active {
+  color: var(--notible-on-accent);
+  background: var(--notible-accent);
+  border-color: var(--notible-accent);
+}
+
+.tw-codex-search {
+  height: 34px;
+  padding: 0 8px;
+  border: 0;
+  border-bottom: 1px solid var(--notible-border);
+  background: transparent;
+  color: var(--notible-text);
+  font: inherit;
+}
+
+.tw-codex-list ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.tw-codex-rows {
+  max-height: min(60vh, 520px);
+  overflow-y: auto;
+}
+
+.tw-codex-new {
+  align-self: stretch;
+}
+
+.tw-codex-list li button {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  text-align: left;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--notible-text);
+  font: inherit;
+  cursor: pointer;
+  padding: 9px 8px;
+}
+
+.tw-codex-list li button:hover {
+  background: var(--notible-hover);
+}
+
+.tw-codex-list li button.is-active {
+  color: var(--notible-accent);
+  background: color-mix(in srgb, var(--notible-accent) 10%, transparent);
+}
+
+.tw-codex-avatar {
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--notible-on-accent);
+}
+
+.tw-codex-row-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tw-codex-page {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.tw-codex-name {
+  margin: 0;
+}
+
+.tw-codex-h4 {
+  margin: 8px 0 0;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.tw-codex-preview {
+  margin: 0;
+  padding: 8px 0;
+  border-top: 1px solid var(--notible-border-subtle);
+  color: var(--notible-muted);
+  font: inherit;
+  white-space: pre-wrap;
+}
+
+.tw-codex-appears {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.tw-codex-appears li {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  border-bottom: 1px solid var(--notible-border-subtle);
+  padding: 4px 0;
+}
+
+.tw-codex-appears li button {
+  border: 0;
+  background: transparent;
+  color: var(--notible-text);
+  font: inherit;
+  cursor: pointer;
+  padding: 0;
+}
+
+.tw-links {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: 8px;
+  border-top: 1px solid var(--notible-border-subtle);
+}
+
+.tw-links-title {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.tw-links-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.tw-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 6px;
+  border: 1px solid var(--notible-border);
+  border-radius: 12px;
+  font-size: 12px;
+}
+
+.tw-chip button {
+  border: 0;
+  background: transparent;
+  color: var(--notible-muted);
+  cursor: pointer;
+  font: inherit;
+  line-height: 1;
+  padding: 0;
+}
+
+.tw-links-add {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.tw-links-add input {
+  height: 34px;
+  padding: 0 8px;
+  border: 0;
+  border-bottom: 1px solid var(--notible-border);
+  background: transparent;
+  color: var(--notible-text);
+  font: inherit;
+}
+
+/* Board — mind-map canvas: beats + scenes on an invisible 20px snap grid,
+   joined by right-angle connectors. */
+.tw-board {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-top: 8px;
+}
+
+.tw-board-toolbar {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.tw-board-toolbar span {
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.tw-board-canvas {
+  position: relative;
+  overflow: auto;
+  max-width: 100%;
+  max-height: calc(100vh - 260px);
+  min-height: 420px;
+  border: 1px solid var(--notible-border-subtle);
+  border-radius: 8px;
+  background: var(--notible-surface);
+}
+
+.tw-board-links {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.tw-board-link {
+  fill: none;
+  stroke: var(--notible-muted);
+  stroke-width: 1.5;
+  pointer-events: none;
+}
+
+/* Wide, invisible hover target; the thin line itself is not clickable. */
+.tw-board-link-hit {
+  fill: none;
+  stroke: transparent;
+  stroke-width: 16;
+  pointer-events: stroke;
+  cursor: default;
+}
+
+.tw-board-link-group.is-hover .tw-board-link {
+  stroke: var(--notible-danger);
+  stroke-width: 2.5;
+}
+
+/* Round remove button on the middle of a connection, shown on hover. */
+.tw-board-link-del {
+  pointer-events: all;
+  cursor: pointer;
+}
+
+.tw-board-link-del circle {
+  fill: var(--notible-surface);
+  stroke: var(--notible-danger);
+  stroke-width: 1.5;
+}
+
+.tw-board-link-del path {
+  fill: none;
+  stroke: var(--notible-danger);
+  stroke-width: 1.6;
+  stroke-linecap: round;
+}
+
+.tw-board-link-del:hover circle {
+  fill: var(--notible-danger);
+}
+
+.tw-board-link-del:hover path {
+  stroke: var(--notible-surface);
+}
+
+.tw-board-link.is-live {
+  stroke-dasharray: 4 3;
+  pointer-events: none;
+}
+
+.tw-board-node {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 12px;
+  border: 1px solid var(--notible-border);
+  border-radius: 8px;
+  background: var(--notible-surface);
+  color: var(--notible-text);
+  font-size: 13px;
+  cursor: grab;
+  user-select: none;
+  touch-action: none;
+}
+
+.tw-board-node.is-selected {
+  outline: 2px solid var(--notible-accent);
+  outline-offset: 2px;
+}
+
+.tw-board-node-body {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.tw-board-node-body .tw-board-node-title {
+  flex: 0 0 auto;
+}
+
+/* Codex links shown on the card: a colour dot per kind + the entry's name. */
+.tw-board-chips {
+  display: flex;
+  gap: 8px;
+  overflow: hidden;
+  font-size: 10.5px;
+  line-height: 1.3;
+  color: var(--notible-muted);
+  white-space: nowrap;
+}
+
+.tw-board-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  max-width: 72px;
+}
+
+.tw-board-chip i {
+  flex: 0 0 auto;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+}
+
+.tw-board-chip {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Frames: dashed groups drawn behind the cards; only the title bar takes the pointer. */
+.tw-board-frame {
+  position: absolute;
+  border: 1.5px dashed var(--notible-border);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--notible-accent) 4%, transparent);
+  pointer-events: none;
+}
+
+.tw-board-frame[data-level="2"] { background: color-mix(in srgb, var(--notible-accent) 7%, transparent); }
+.tw-board-frame[data-level="3"] { background: color-mix(in srgb, var(--notible-accent) 10%, transparent); }
+
+.tw-board-frame.is-selected {
+  border-color: var(--notible-accent);
+}
+
+.tw-board-frame-head {
+  display: flex;
+  align-items: center;
+  height: 22px;
+  padding: 0 10px;
+  color: var(--notible-muted);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: grab;
+  pointer-events: auto;
+}
+
+.tw-board-frame.is-selected .tw-board-frame-head {
+  color: var(--notible-accent);
+}
+
+.tw-board-frame-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tw-board-band {
+  position: absolute;
+  z-index: 5;
+  border: 1px solid var(--notible-accent);
+  background: color-mix(in srgb, var(--notible-accent) 10%, transparent);
+  pointer-events: none;
+}
+
+.tw-board-canvas.is-moving { cursor: grabbing; }
+
+/* Loose timeline: labels dragged along a ruler; they carry no scale, so
+   "Day 2" can sit next to "12 years later". A jump marker is flagged with //. */
+.tw-board-ruler {
+  position: sticky;
+  top: 0;
+  z-index: 4;
+  height: 32px;
+  background: var(--notible-surface);
+  border-bottom: 1px solid var(--notible-border-subtle);
+}
+
+.tw-board-marker {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 10px 0 8px;
+  border-left: 2px solid var(--notible-accent);
+  font-size: 12px;
+  white-space: nowrap;
+  cursor: ew-resize;
+  user-select: none;
+  touch-action: none;
+}
+
+.tw-board-marker-label {
+  font-weight: 500;
+}
+
+.tw-board-chip-more {
+  flex: 0 0 auto;
+}
+
+.tw-board-marker-jump {
+  margin-right: 5px;
+  color: var(--notible-warning);
+  font-weight: 700;
+}
+
+.tw-board-marker.is-jump {
+  border-left-style: dashed;
+  border-left-color: var(--notible-warning);
+}
+
+.tw-board-node.is-scene {
+  border-style: dashed;
+}
+
+.tw-board-node.is-dragging {
+  cursor: grabbing;
+  border-color: var(--notible-accent);
+  z-index: 2;
+}
+
+/* Beat node colours — a left spine, not a fill, so text stays readable. */
+.tw-board-node[data-colour] { border-left-width: 7px; }
+.tw-board-node[data-colour="red"] { border-left-color: var(--notible-danger); }
+.tw-board-node[data-colour="amber"] { border-left-color: var(--notible-warning); }
+.tw-board-node[data-colour="green"] { border-left-color: var(--notible-success); }
+.tw-board-node[data-colour="blue"] { border-left-color: var(--notible-highlight-blue); }
+.tw-board-node[data-colour="violet"] { border-left-color: var(--notible-highlight-purple); }
+
+.tw-board-node-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 0;
+}
+
+.tw-board-node-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  border: 0;
+  border-bottom: 1px solid var(--notible-accent);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+}
+
+.tw-board-node-handle {
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 1.5px solid var(--notible-accent);
+  background: var(--notible-surface);
+  cursor: crosshair;
+  opacity: 0;
+}
+
+.tw-board-node-handle.is-top { left: 50%; top: -6px; margin-left: -6px; }
+.tw-board-node-handle.is-bottom { left: 50%; bottom: -6px; margin-left: -6px; }
+.tw-board-node-handle.is-left { top: 50%; left: -6px; margin-top: -6px; }
+.tw-board-node-handle.is-right { top: 50%; right: -6px; margin-top: -6px; }
+
+.tw-board-node:hover .tw-board-node-handle,
+.tw-board-canvas.is-connecting .tw-board-node-handle {
+  opacity: 1;
+}
+
+.tw-board-node-handle:hover {
+  background: var(--notible-accent);
+}
+
+.tw-board-card-dot {
+  flex: 0 0 auto;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--notible-muted);
+}
+
+.tw-board-node[data-status="draft"] .tw-board-card-dot { background: var(--notible-border); }
+.tw-board-node[data-status="revised"] .tw-board-card-dot { background: var(--notible-accent); }
+.tw-board-node[data-status="final"] .tw-board-card-dot { background: var(--notible-text); }
+
+.tw-row-icon {
+  flex: 0 0 auto;
+  font-size: 12px;
+  opacity: 0.85;
+}
+
+/* One working page: a quiet book heading, followed by its actual contents. */
+.tw-page-heading { margin-bottom: 26px; }
+.tw-page-heading-line { display: flex; align-items: baseline; gap: 16px; flex-wrap: wrap; }
+.tw-page-heading h2 {
+  margin: 0;
+  font: 600 30px/1.25 Georgia, "Iowan Old Style", serif;
+  letter-spacing: -0.025em;
+  color: var(--notible-text);
+}
+.tw-page-summary { color: var(--notible-muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+/* Reuse Core's real navigation and persistence as the folder's paper tabs. */
+.core-object-tabs:has(+ .core-container-slot [data-plugin-view="notible.typewriter"]) {
+  max-width: 1160px;
+  gap: 5px;
+  padding-left: 26px;
+  margin-bottom: 0;
+  border-bottom: 0;
+}
+.core-object-tabs:has(+ .core-container-slot [data-plugin-view="notible.typewriter"]) button {
+  border: 1px solid var(--notible-border-subtle);
+  border-bottom: 0;
+  border-radius: 8px 8px 0 0;
+  padding: 10px 18px;
+  background: var(--notible-background);
+}
+.core-object-tabs:has(+ .core-container-slot [data-plugin-view="notible.typewriter"]) button.is-active {
+  color: var(--notible-accent);
+  background: var(--notible-surface);
+  box-shadow: inset 0 2px var(--notible-accent);
+}
+.tw-manuscript-actions { flex-wrap: wrap; padding-bottom: 12px; border-bottom: 1px solid var(--notible-border-subtle); }
+.tw-row-title > span { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.tw-row[data-tw-kind="chapter"] .tw-row-title > span { overflow-wrap: anywhere; }
+.tw-row:hover { background: var(--notible-hover); }
+.tw-row:focus-within .tw-row-drag { opacity: 1; }
+.tw-twist { display: grid; place-items: center; flex: 0 0 22px; height: 28px; border-radius: 4px; }
+.tw-twist[aria-expanded="true"] svg { transform: rotate(90deg); }
+.tw-twist:hover { background: var(--notible-active); }
+.tw-row-count { font-size: 11px; }
+
+/* The category switches belong above the folder, not inside its narrow list. */
+.tw-codex-folder {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(150px, 200px) minmax(0, 1fr);
+  gap: 32px;
+  padding: 24px;
+  min-height: 390px;
+  border: 1px solid var(--notible-border);
+  border-radius: 3px 10px 10px 10px;
+  background: var(--notible-background);
+  box-shadow: 0 3px 0 var(--notible-border-subtle), 0 8px 16px rgba(0, 0, 0, 0.03);
+}
+.tw-codex-folder::before {
+  content: "";
+  position: absolute;
+  top: -9px;
+  left: 24px;
+  width: 96px;
+  height: 8px;
+  border: 1px solid var(--notible-border);
+  border-bottom: 0;
+  border-radius: 5px 5px 0 0;
+  background: var(--notible-background);
+}
+.tw-codex-list, .tw-codex-page { min-width: 0; }
+.tw-codex-page { padding: 4px 8px 16px 4px; gap: 16px; }
+.tw-codex-list { padding-right: 20px; border-right: 1px solid var(--notible-border-subtle); }
+.tw-kind-count { font-size: 10px; opacity: .75; font-variant-numeric: tabular-nums; }
+.tw-codex-name { font: 600 23px/1.2 Georgia, "Iowan Old Style", serif; overflow-wrap: anywhere; }
+.tw-codex-preview { overflow-wrap: anywhere; line-height: 1.65; }
+.tw-codex-page .properties-editor { gap: 0; }
+.tw-codex-page .properties-editor-field {
+  display: grid;
+  grid-template-columns: minmax(90px, 25%) minmax(0, 1fr);
+  align-items: center;
+  gap: 16px;
+  min-width: 0;
+}
+.tw-codex-page .properties-editor-field > span { color: var(--notible-muted); font-weight: 400; }
+.tw-codex-relations { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; }
+.tw-codex-relations > :only-child { grid-column: 1 / -1; }
+.tw-codex-relations .tw-links { min-width: 0; }
+.tw-codex-empty { font-size: 12px; padding: 8px; }
+.tw-codex-empty-detail { align-self: center; padding: 32px 0; max-width: 32ch; }
+.tw-codex-empty-detail h3 { font: 500 23px/1.3 Georgia, "Iowan Old Style", serif; margin: 0 0 8px; }
+.tw-codex-empty-detail p { line-height: 1.6; }
+.tw-progress { gap: 24px; border-bottom: 0; }
+.tw-progress-compile { padding-top: 22px; border-top: 1px solid var(--notible-border-subtle); }
+
+[data-plugin-view="notible.typewriter"] :is(button, input):focus-visible {
+  outline: 2px solid var(--notible-accent);
+  outline-offset: 3px;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .tw-board-link-del { animation: tw-fade-in 140ms ease-out; }
+  .tw-menu { transform-origin: top left; animation: tw-menu-in 140ms cubic-bezier(.22, 1, .36, 1); }
+  .tw-submenu.is-flipped { transform-origin: top right; }
+  .tw-board-link, .tw-board-link-del, .tw-board-link-del circle, .tw-board-link-del path,
+  .tw-board-node-handle, .tw-board-node {
+    transition: stroke 140ms ease, stroke-width 140ms ease, fill 140ms ease, opacity 140ms ease, background-color 140ms ease, border-color 140ms ease;
+  }
+  /* No page-level fade here: Core already fades every container slot in.
+     A second fade (and cancelling Core's) made the whole tab blink on a
+     Manuscript/Codex/Progress/Board switch. */
+  .tw-btn, .tw-btn-quiet, .tw-btn-danger, .tw-codex-kinds button, .tw-codex-rows button, .tw-row {
+    transition: background-color 140ms ease, color 140ms ease, border-color 140ms ease;
+  }
+  .tw-twist svg { transition: transform 160ms ease; }
+  .tw-scene-panel, .tw-codex-page { animation: tw-detail-in 240ms cubic-bezier(.22, 1, .36, 1); }
+  .tw-row-bar > span { transition: width 260ms cubic-bezier(.16, 1, .3, 1); }
+}
+@keyframes tw-fade-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes tw-menu-in { from { opacity: 0; transform: scale(.97); } to { opacity: 1; transform: none; } }
+@keyframes tw-detail-in { from { opacity: 0; transform: translateY(-3px); } to { opacity: 1; transform: none; } }
+
+.tw-btn:active:not(:disabled), .tw-codex-kinds button:active { transform: translateY(1px); }
+
+/* Respond to the available editor column, including an open inspector. */
+@container (max-width: 760px) {
+  .tw-binder-book { padding: 24px 20px 28px 36px; }
+  .tw-binder-book::before { left: 17px; }
+  .tw-binder-book::after { left: 6px; }
+  .tw-codex-folder { gap: 18px; padding: 20px 16px; grid-template-columns: minmax(130px, 170px) minmax(0, 1fr); }
+  .tw-codex-list { padding-right: 12px; }
+  .tw-row-synopsis, .tw-row-pov { display: none; }
+  .tw-page-heading-line { gap: 8px 16px; }
+}
+@container (max-width: 520px) {
+  .tw-binder-book { padding: 22px 16px; min-height: 420px; }
+  .tw-binder-book::before, .tw-binder-book::after { display: none; }
+  .tw-codex-folder { grid-template-columns: minmax(0, 1fr); }
+  .tw-codex-list { padding: 0 0 16px; border-right: 0; border-bottom: 1px solid var(--notible-border-subtle); }
+  .tw-codex-rows { max-height: 180px; }
+  .tw-codex-relations { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+  .tw-page-heading h2 { font-size: 26px; }
+  .tw-row { gap: 4px; }
+  .tw-row-drag { display: none; }
+  .tw-row-meter { grid-template-columns: 44px auto; gap: 5px; }
+  .tw-row-count { min-width: 52px; font-size: 10px; }
+  .tw-row-status { max-width: 92px; }
+  .tw-row[data-tw-kind="part"]::before { display: none; }
+}
+
+.tw-row-rename { flex: 1; min-width: 0; border: 0; border-bottom: 1px solid var(--notible-accent); background: transparent; color: var(--notible-text); font: inherit; padding: 4px 2px; }
+.tw-row-rename:focus { outline: none; }
+/* The outline reads in a column, not across 1,000+ px (V-SURFACES-08). */
+.tw-manuscript { max-inline-size: 980px; }
+.tw-empty-start { display: grid; justify-items: center; gap: 8px; max-width: 420px; margin: 48px auto; text-align: center; }
+.tw-empty-start p { margin: 0; }
+.tw-btn.tw-btn-primary { border-color: var(--notible-accent); color: var(--notible-accent); }
+.tw-codex-empty-detail { max-width: 380px; margin: 64px auto; text-align: center; }

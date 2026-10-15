@@ -1,0 +1,23 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Notible Core Test",
+  "mainBinaryName": "NotibleCoreTest",
+  "identifier": "com.notible.app.core-test",
+  "build": {
+    "beforeBuildCommand": "npm run build:core",
+    "frontendDist": "../dist-core"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "Notible Core Test",
+        "width": 1000,
+        "height": 720
+      }
+    ]
+  },
+  "bundle": {
+    "createUpdaterArtifacts": false,
+    "targets": ["nsis"]
+  }
+}

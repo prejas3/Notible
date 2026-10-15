@@ -1,0 +1,14 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Capability for the main window. No updater:default on purpose: its JS commands accept proxy and allow_downgrades from the caller, and any plugin in the webview can call them, which is a forced signed downgrade. Updates go through the update_check/update_install commands in lib.rs instead.",
+  "windows": [
+    "main"
+  ],
+  "permissions": [
+    "core:default",
+    "core:webview:allow-set-webview-zoom",
+    "opener:default",
+    "dialog:default"
+  ]
+}

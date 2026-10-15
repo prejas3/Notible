@@ -1,0 +1,29 @@
+/* Primitives come from surface.css; this file is layout only. */
+
+.planning-surface { display: grid; gap: 20px; }
+.planning-header, .planning-section-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+.planning-header { padding-bottom: 16px; border-bottom: 1px solid var(--notible-border); }
+.planning-header h2, .planning-section-heading h3 { margin: 4px 0 6px; color: var(--notible-text); }
+.planning-header p:not(.planning-eyebrow) { max-width: 680px; margin: 0; color: var(--notible-muted); }
+.planning-type-badge { display: grid; place-items: center; width: 36px; height: 36px; border-radius: 10px; background: var(--notible-selected-soft); font-size: 18px; }
+.planning-content-grid { display: grid; grid-template-columns: minmax(280px, .8fr) minmax(380px, 1.2fr); gap: 16px; }
+.planning-create-card, .planning-list-card { padding: 20px; }
+.planning-section-heading { margin-bottom: 18px; }
+.planning-create-card label { margin-top: 13px; }
+.planning-form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.planning-create-button { width: 100%; margin-top: 18px; }
+.planning-record-list { display: grid; gap: 8px; }
+.planning-record { display: flex; justify-content: space-between; gap: 12px; align-items: center; padding: 12px; border: 1px solid var(--notible-border); border-radius: 10px; }
+.planning-record-clickable { cursor: pointer; }
+.planning-record-clickable:hover { border-color: var(--notible-accent); }
+.planning-record strong, .planning-record small { display: block; }
+.planning-record small { margin-top: 4px; color: var(--notible-muted); font-size: 11px; }
+.planning-record span { color: var(--notible-accent); font-size: 11px; font-weight: 700; text-transform: uppercase; }
+@media (max-width: 900px) { .planning-content-grid { grid-template-columns: 1fr; } .planning-header { flex-direction: column; } }
+
+.planning-content-grid { grid-template-columns: minmax(240px, .75fr) minmax(0, 1.5fr); gap: 24px; }
+.planning-record-list { gap: 0; }
+.planning-record { padding: 14px 4px; border: 0; border-bottom: 1px solid var(--notible-border-subtle); border-radius: 0; }
+.planning-record-clickable:hover { background: var(--notible-hover); }
+.planning-create-button { width: auto; justify-self: start; }
+@media (max-width: 1000px) { .planning-content-grid { grid-template-columns: minmax(0, 1fr); } }

@@ -1,0 +1,394 @@
+.pd-dashboard { display: flex; flex-direction: column; gap: 14px; height: 100%; min-height: 0; }
+.pd-dashboard > * { flex: none; }
+.pd-tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--notible-border); }
+.pd-tabs button { padding: 9px 14px; border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--notible-muted); cursor: pointer; font: inherit; }
+.pd-tabs button.active { border-color: var(--notible-accent); color: var(--notible-text); }
+.pd-panel { display: flex; flex-direction: column; gap: 14px; min-height: 0; }
+.pd-panel-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.pd-panel-actions > .pd-filter:first-of-type { margin-inline-start: auto; }
+.pd-filter { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--notible-muted); font-weight: 700; }
+.pd-filter .nb-select { min-inline-size: 120px; }
+.pd-filter select { border: 1px solid var(--notible-border); border-radius: 8px; padding: 5px 8px; background: var(--notible-surface); color: var(--notible-text); font: inherit; font-weight: 400; }
+.pd-timeline-heading { margin: 0; margin-right: auto; font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: var(--notible-muted); }
+/* The board is a plain grid (views-ui kanban) and nothing inside it scrolls,
+   so it has to be the scroller itself. It fills whatever height is left below
+   the tabs and toolbar instead of a fixed 52vh: a hard height either cut cards
+   off (overflow:hidden) or hung below the window. Same shape as Timeline. */
+.pd-dashboard .pd-panel:has(> .pd-kanban-scroll) { flex: 1 1 auto; }
+.pd-kanban-scroll { flex: 1 1 auto; min-height: 0; overflow: auto; }
+.pd-multiselect-menu { position: relative; }
+.pd-multiselect-toggle { min-width: 120px; padding: 5px 8px; text-align: left; }
+.pd-multiselect-panel { position: absolute; z-index: 20; top: calc(100% + 4px); left: 0; display: grid; gap: 4px; min-width: 160px; max-height: 220px; overflow: auto; padding: 8px; border: 1px solid var(--notible-border); border-radius: 8px; background: var(--notible-surface); box-shadow: 0 10px 24px rgba(0,0,0,0.12); }
+.pd-multiselect-panel label { display: flex; align-items: center; gap: 6px; font-weight: 400; font-size: 12px; color: var(--notible-text); white-space: nowrap; }
+.pd-card { display: grid; gap: 10px; }
+.pd-metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+.pd-metrics div { border: 1px solid var(--notible-border); border-radius: 8px; padding: 14px; }
+.pd-metrics strong { display: block; color: var(--notible-text); font-size: 20px; }
+.pd-metrics span { display: block; margin-top: 3px; color: var(--notible-muted); font-size: 12px; }
+.pd-record-list { display: grid; gap: 10px; }
+.pd-record-list div { display: flex; justify-content: space-between; gap: 10px; border: 1px solid var(--notible-border); border-radius: 8px; padding: 12px 14px; }
+.pd-record-list small { color: var(--notible-muted); font-size: 11px; }
+.pd-gantt { display: grid; gap: 8px; --pd-gantt-label-w: 290px; --pd-gantt-track-x: calc(46px + var(--pd-gantt-label-w)); }
+.pd-gantt-toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
+.pd-gantt-zoom-label { margin-right: 2px; color: var(--notible-muted); font-size: 11px; font-weight: 700; text-transform: uppercase; }
+.pd-gantt-toolbar button.active { border-color: var(--notible-accent); background: color-mix(in srgb, var(--notible-accent) 12%, transparent); color: var(--notible-accent); }
+.pd-gantt-toolbar .nb-select { min-inline-size: 170px; }
+.pd-gantt-nav-btn { display: inline-flex; align-items: center; justify-content: center; padding: 5px 6px; }
+.pd-gantt-range-label { min-width: 168px; text-align: center; color: var(--notible-text); font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums; }
+/* Today's marker doubles as a navigation reference, not decoration — the one
+   other place a plain dashed line earns the accent colour, same rule as the
+   selected bar's outline. */
+.pd-gantt-today-line { position: absolute; top: 0; bottom: 0; width: 0; border-left: 1px dashed var(--notible-accent); opacity: .7; }
+/* Each row's handle/label/track columns must land at the exact same pixel
+   offsets in every row — the dependency-line SVG and gridlines are a single
+   overlay positioned by CSS inset (below), not per-row, and their 0-100%
+   coordinates are meant to span just the track region. Content-based column
+   widths (minmax(160,260) etc.) could size differently row to row, which is
+   what used to send dependency arrows off in "random" diagonals; fixed px
+   widths here guarantee every row's track sits in the same place. Grid
+   placement was tried for the overlay too (sharing the rows' own grid
+   columns) but CSS Grid resolves items with an explicit grid-row/grid-column
+   before auto-placed ones regardless of DOM order, so an all-rows-spanning
+   overlay item permanently steals that column from every row's real content
+   — hence the plain absolute-inset overlay instead. Keep this in sync with
+   the "18px 210px 1fr" columns + 14px gap below: left inset = 18+14+210+14. */
+/* No row-to-row gap here: dependency-line/gridline y-coordinates are
+   computed in JS as index * GANTT_ROW_HEIGHT, which only matches actual
+   pixel spacing if rows are packed with zero extra gap between them. Every
+   column's content must also stay well under that 34px row height — a tall
+   child (the old per-row <select> pair) skews CSS's own align-items:center
+   away from true visual center, which is what made bars/arrows look
+   anchored near the top edge instead of mid-bar. */
+.pd-gantt-rows { position: relative; display: grid; max-height: 420px; overflow-y: auto; }
+.pd-gantt-row { display: grid; grid-template-columns: 18px var(--pd-gantt-label-w, 290px) 1fr; align-items: center; gap: 14px; padding: 4px 0; }
+.pd-gantt-reorder-handle { cursor: grab; color: var(--notible-muted); font-size: 13px; line-height: 1; user-select: none; text-align: center; }
+.pd-gantt-label { display: grid; grid-template-columns: minmax(0, 1fr) 74px 74px; align-items: center; gap: 8px; overflow: hidden; color: var(--notible-text); font-size: 13px; }
+.pd-gantt-label strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.pd-gantt-kind, .pd-gantt-status { width: fit-content; border-radius: 999px; padding: 2px 7px; background: var(--notible-surface); border: 1px solid var(--notible-border); color: var(--notible-muted); font-size: 10px; font-style: normal; text-transform: uppercase; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pd-gantt-kind-milestone { color: var(--notible-color-violet); border-color: var(--notible-color-violet); }
+.pd-gantt-kind-cycle { color: var(--notible-color-blue); border-color: var(--notible-color-blue); }
+.pd-gantt-kind-release { color: var(--notible-color-green); border-color: var(--notible-color-green); }
+.pd-gantt-track { position: relative; height: 8px; border-radius: 999px; background: var(--notible-border); }
+.pd-gantt-bar { position: absolute; top: -6px; height: 20px; min-width: 6px; border-radius: 6px; background: var(--notible-muted); opacity: .55; cursor: grab; touch-action: none; }
+.pd-gantt-bar:active { cursor: grabbing; }
+/* Bordo is reserved for the one state a viewer needs to find at a glance: the
+   task actually being worked on right now. Every other plain task bar (to do,
+   planned, done) stays a neutral gray — only its opacity says "done" vs "not
+   started yet" — so accent does not compete with the stage colors below for
+   attention on a dense timeline. :where() keeps this at the same specificity
+   as .pd-gantt-bar itself, so the stage-specific rules further down (plain
+   classes, declared later) still win for issue/cycle/release/milestone. */
+:where(.pd-gantt-bar).is-done { opacity: .35; }
+:where(.pd-gantt-bar).is-in-progress { background: var(--notible-accent); opacity: 1; }
+/* Stage-specific colors, reusing the same palette as the type badges above
+   so a milestone/cycle/release reads as the same "thing" in both places. */
+.pd-gantt-bar-issue { background: var(--notible-color-amber); opacity: 1; }
+.pd-gantt-bar-cycle { background: var(--notible-color-blue); opacity: 1; }
+.pd-gantt-bar-release { background: var(--notible-color-green); opacity: 1; }
+.pd-gantt-bar-milestone { background: var(--notible-color-violet); opacity: 1; }
+/* Milestones are a point in time, not a duration — rotate the bar's own
+   square into the standard Gantt diamond marker instead of a horizontal
+   bar (industry convention: dhtmlxGantt, MS Project, etc). */
+.pd-gantt-diamond { top: -5px; width: 18px !important; height: 18px; min-width: 0; border-radius: 3px; transform: translateX(-50%) rotate(45deg); }
+.pd-gantt-diamond .pd-gantt-connect-handle { transform: translateY(-50%) rotate(-45deg); }
+/* Bare dot, no box (per the standing row-actions convention) — invisible
+   until the bar is hovered so it doesn't clutter the chart at rest. Drag it
+   onto another row to create a finish-start dependency by hand. */
+.pd-gantt-connect-handle { position: absolute; top: 50%; right: -9px; width: 10px; height: 10px; border-radius: 50%; background: var(--notible-accent); border: 2px solid var(--notible-surface); transform: translateY(-50%); cursor: crosshair; opacity: 0; transition: opacity .12s; z-index: 2; }
+.pd-gantt-bar:hover .pd-gantt-connect-handle, .pd-gantt-connect-handle:active { opacity: 1; }
+
+/* Edge-resize handles: left = start date, right = end date. Only on real bars
+   (not milestone diamonds). Invisible until the bar is hovered. */
+.pd-gantt-resize { position: absolute; top: 0; height: 100%; width: 8px; cursor: ew-resize; touch-action: none; z-index: 1; }
+.pd-gantt-resize-start { left: 0; border-radius: 6px 0 0 6px; }
+.pd-gantt-resize-end { right: 0; border-radius: 0 6px 6px 0; }
+.pd-gantt-bar:hover .pd-gantt-resize { background: color-mix(in srgb, var(--notible-surface) 55%, transparent); }
+/* Single shared inset for every track-region overlay below (gridlines,
+   dependency lines, stage-flag lines) — left/width match the row grid's
+   column1+column2+gaps above, so a plain 0-100% left inside any child here
+   lines up with the track column of every row. Sharing one wrapper (instead
+   of repeating this inset per overlay) is what fixes a real bug: gridlines
+   used to carry this same 256px value in their own CSS `left`, but each
+   tick's inline `style={{ left }}` silently overrode it, leaving gridlines
+   positioned against the *whole row's* width instead of just the track's. */
+/* Height is set inline (matching `.pd-gantt-rows`' own full-content height,
+   not the 420px `max-height` it's clipped to) — this fixed 100% used to
+   mean "100% of the CLIPPED viewport", not of the scrollable content. Below
+   ~12 rows that's the same number and the bug is invisible; past it, the
+   whole overlay (dependency arrows, drag-connect preview) is squeezed into
+   one viewport's height and never actually reaches the rows below the fold,
+   which is what "arrows land several rows off, disconnected from anything"
+   turned out to be. */
+.pd-gantt-track-overlay { position: absolute; top: 0; left: var(--pd-gantt-track-x); width: calc(100% - var(--pd-gantt-track-x)); pointer-events: none; }
+/* Divider between the name column and the track. Absolutely positioned on
+   the same computed x as the overlay, so it always sits on the real seam. */
+.pd-gantt-label-resizer { position: absolute; top: 0; bottom: 0; left: calc(var(--pd-gantt-track-x) - 7px); width: 9px; cursor: col-resize; touch-action: none; }
+.pd-gantt-label-resizer::after { content: ""; position: absolute; top: 0; bottom: 0; left: 4px; width: 1px; background: var(--notible-border); }
+.pd-gantt-label-resizer:hover::after, .pd-gantt-label-resizer:active::after { background: var(--notible-accent); }
+.pd-gantt-gridline { position: absolute; top: 0; bottom: 0; width: 1px; background: var(--notible-border); opacity: .5; }
+/* <svg> is a replaced element: CSS inset alone does NOT stretch it — without
+   an explicit width/height (100%/100%, from the parent overlay above) it
+   falls back to the UA default 300x150 and every coordinate inside silently
+   renders in the wrong place. */
+.pd-gantt-deps { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+/* Connectors are colour-coded by dependency type so the four routings read at
+   a glance, and none of them is the bars' burgundy (which is why the old
+   single accent-coloured line vanished on top of the bars it linked).
+   finish-start — the everyday "then" — stays a neutral ink. */
+.pd-gantt { --pd-gantt-dep-line: var(--notible-text); }
+.pd-gantt-deps path { fill: none; stroke-width: 1.5; }
+.pd-gantt-dep-finish-start  path { stroke: var(--pd-gantt-dep-line); stroke-opacity: .7; }
+.pd-gantt-dep-finish-start  polygon { fill: var(--pd-gantt-dep-line); }
+.pd-gantt-dep-start-start   path { stroke: var(--notible-color-green); }
+.pd-gantt-dep-start-start   polygon { fill: var(--notible-color-green); }
+.pd-gantt-dep-finish-finish path { stroke: var(--notible-color-blue); }
+.pd-gantt-dep-finish-finish polygon { fill: var(--notible-color-blue); }
+.pd-gantt-dep-start-finish  path { stroke: var(--notible-color-violet); }
+.pd-gantt-dep-start-finish  polygon { fill: var(--notible-color-violet); }
+.pd-gantt-connect-preview { position: absolute; inset: 0; width: 100%; height: 100%; }
+.pd-gantt-connect-preview line { stroke: var(--notible-accent); stroke-width: 1.5; stroke-dasharray: 4 3; }
+/* Full-height marker at a cycle's end date — a project-wide stage boundary
+   other rows care about, not just another bar, so it gets a vertical "flag"
+   through the whole chart. Releases don't get one: their own green bar
+   already ends on the same date and the line only doubled that edge. */
+.pd-gantt-flag-line { position: absolute; top: 0; bottom: 0; width: 2px; opacity: .55; }
+.pd-gantt-flag-cycle { background: var(--notible-color-blue); }
+.pd-gantt-axis { position: relative; height: 16px; margin-top: 4px; margin-left: var(--pd-gantt-track-x); width: calc(100% - var(--pd-gantt-track-x)); color: var(--notible-muted); font-size: 11px; }
+.pd-gantt-axis-tick { position: absolute; top: 0; transform: translateX(-50%); white-space: nowrap; font-variant-numeric: tabular-nums; }
+/* A clicked (not dragged) bar gets a thin accent outline — the only place
+   selection shows on the bar itself, everything else stays whichever status
+   color it already had. */
+.pd-gantt-bar.is-selected { outline: 2px solid var(--notible-accent); outline-offset: 1px; }
+.pd-gantt-detail { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 4px; border: 1px solid var(--notible-border); border-radius: 8px; padding: 10px 14px; background: var(--notible-surface); }
+.pd-gantt-detail-main { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.pd-gantt-detail-main strong { color: var(--notible-text); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pd-gantt-detail-meta { color: var(--notible-muted); font-size: 12px; }
+.pd-gantt-detail-open { flex: none; border: none; background: none; padding: 0; color: var(--notible-accent); font: inherit; font-size: 12px; font-weight: 600; cursor: pointer; }
+.pd-gantt-detail-open:hover { color: var(--notible-accent-hover); text-decoration: underline; }
+.pd-gantt-zoom-hint { margin-left: auto; color: var(--notible-muted); font-size: 11px; }
+.pd-gantt-menu { z-index: 40; display: flex; flex-direction: column; width: 280px; max-height: calc(100vh - 16px); padding: 6px; border: 1px solid var(--notible-border); border-radius: 9px; background: var(--notible-surface); box-shadow: 0 8px 24px rgba(0, 0, 0, .14); box-sizing: border-box; }
+.pd-gantt-menu-title { margin: 0; padding: 4px 8px; font-size: 12px; font-weight: 700; color: var(--notible-text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pd-gantt-menu-hint { margin: 0; padding: 0 8px 6px; font-size: 11px; color: var(--notible-muted); }
+/* Only the candidate list scrolls; title, current deps and the footer note
+   stay pinned. min-height:0 lets the flex child actually shrink to trigger
+   the scrollbar instead of pushing the menu past the viewport. */
+.pd-gantt-menu-list { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
+.pd-gantt-menu button { display: block; width: 100%; border: none; border-radius: 6px; background: none; padding: 7px 8px; text-align: left; font: inherit; font-size: 12px; color: var(--notible-text); cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pd-gantt-menu button:hover { background: color-mix(in srgb, var(--notible-accent) 10%, transparent); }
+.pd-gantt-menu button.active { color: var(--notible-accent); font-weight: 700; }
+.pd-gantt-menu-danger { color: var(--notible-danger); }
+.pd-gantt-menu-empty { margin: 0; padding: 6px 8px; font-size: 12px; color: var(--notible-muted); }
+.pd-gantt-menu-dep { display: flex; align-items: baseline; gap: 8px; padding: 5px 8px; font-size: 12px; color: var(--notible-text); }
+.pd-gantt-menu-dep-text { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.pd-gantt-menu-dep-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pd-gantt-menu-dep-rule { font-size: 11px; color: var(--notible-muted); }
+.pd-gantt-menu-dep button { width: auto; flex: none; padding: 3px 6px; font-size: 11px; }
+.pd-gantt-menu-note { margin: 4px 0 0; padding: 6px 8px 2px; border-top: 1px solid var(--notible-border); font-size: 11px; color: var(--notible-muted); }
+
+/* Nested variant: rule → element. The main menu no longer scrolls; each rule
+   row opens a hover/focus flyout holding the (filtered) predecessor list. */
+.pd-gantt-menu--nested { width: 260px; max-height: none; overflow: visible; }
+.pd-gantt-menu--nested .pd-gantt-menu-dep { align-items: center; }
+.pd-gantt-menu-filter { margin: 0 4px 4px; padding: 6px 8px; border: 1px solid var(--notible-border); border-radius: 6px; background: var(--notible-bg); font: inherit; font-size: 12px; color: var(--notible-text); }
+.pd-gantt-menu-sub { position: relative; }
+.pd-gantt-menu-sub-toggle { display: flex; justify-content: space-between; align-items: center; }
+.pd-gantt-menu-dep .pd-gantt-menu-sub-toggle { width: auto; flex: none; padding: 3px 6px; font-size: 11px; }
+.pd-gantt-menu-flyout { position: absolute; left: 100%; top: -6px; margin-left: 2px; display: none; min-width: 200px; max-width: 280px; padding: 6px; border: 1px solid var(--notible-border); border-radius: 9px; background: var(--notible-surface); box-shadow: 0 8px 24px rgba(0, 0, 0, .14); }
+.pd-gantt-menu--left .pd-gantt-menu-flyout { left: auto; right: 100%; margin-left: 0; margin-right: 2px; }
+.pd-gantt-menu-sub:hover > .pd-gantt-menu-flyout,
+.pd-gantt-menu-sub:focus-within > .pd-gantt-menu-flyout { display: block; }
+.pd-gantt-menu-flyout .pd-gantt-menu-list { max-height: 40vh; overflow-y: auto; }
+.pd-gantt-menu-foot { margin-top: 4px; padding-top: 4px; border-top: 1px solid var(--notible-border); }
+@media (max-width: 620px) { .pd-metrics { grid-template-columns: 1fr 1fr; } .pd-gantt-row { grid-template-columns: 18px 1fr; } .pd-gantt-row .pd-gantt-track { display: none; } .pd-gantt-track-overlay { display: none; } .pd-gantt-label-resizer { display: none; } .pd-gantt-axis { display: none; } }
+
+/* ---------- Planning ----------
+ * A form and a list of a dozen dated items do not need 1900px. Stretching
+ * them there is what made the panel read as three anonymous full-width bars:
+ * the label and its date ended up at opposite ends of the screen. */
+
+/* Planning used to be the one tab that stopped at 780px while every other tab
+   ran the full width of the pane, which read as a bug rather than as a
+   measure. A form is not prose. */
+.pd-panel-narrow {
+  width: 100%;
+}
+
+.pd-create {
+  gap: 16px;
+}
+
+.pd-create-head h3 {
+  margin: 0 0 4px;
+  font-size: 15px;
+  color: var(--notible-text);
+}
+
+.pd-create-head p {
+  margin: 0;
+  font-size: 12px;
+}
+
+.pd-create-row {
+  display: grid;
+  grid-template-columns: minmax(140px, 200px) minmax(0, 1fr);
+  gap: 12px;
+}
+
+.pd-field {
+  display: grid;
+  gap: 5px;
+}
+
+.pd-field > span {
+  color: var(--notible-muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.pd-create-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+/* Not full width: a primary action the size of a banner reads as a section
+   header, not as a button. */
+.pd-create-actions .pd-primary {
+  min-width: 130px;
+}
+
+/* Three columns — Milestones | Releases | Cycles — collapse to one on a
+   narrow panel. */
+.pd-plan-board {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+}
+
+@media (max-width: 720px) {
+  .pd-plan-board { grid-template-columns: 1fr; }
+}
+
+.pd-plan-col {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.pd-plan-col-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--notible-border);
+  color: var(--notible-text);
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+}
+
+.pd-plan-col-count {
+  color: var(--notible-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.pd-plan-col-empty {
+  margin: 2px 0;
+  color: var(--notible-muted);
+}
+
+.pd-plan-card {
+  display: grid;
+  gap: 3px;
+  width: 100%;
+  padding: 9px 2px;
+  border: 0;
+  border-bottom: 1px solid var(--notible-border);
+  background: transparent;
+  color: var(--notible-text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.pd-plan-card:hover {
+  background: var(--notible-hover);
+}
+
+.pd-plan-card strong {
+  overflow: hidden;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pd-plan-card small {
+  color: var(--notible-muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Catches the click that dismisses the row menu, including a second
+   right-click, without stealing pointer events from anything else. */
+.pd-menu-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 39;
+}
+
+/* Finance tab */
+.pd-finance-budget h3 { margin-bottom: 4px; }
+.pd-finance-toolbar { display: flex; flex-wrap: wrap; gap: 8px; padding-bottom: 8px; }
+.pd-finance-toolbar button { padding: 6px 11px; border: 1px solid var(--notible-border); border-radius: 7px; background: var(--notible-surface); color: var(--notible-text); cursor: pointer; font: inherit; font-size: 12px; }
+.pd-finance-toolbar button:hover { background: var(--notible-hover); }
+.pd-finance-toolbar button.active { border-color: var(--notible-accent); color: var(--notible-accent); }
+.pd-finance-import { display: grid; gap: 6px; font-size: 12px; color: var(--notible-muted); }
+.pd-finance-alerts { display: flex; flex-direction: column; gap: 2px; color: var(--notible-danger); font-size: 12px; padding: 6px 0; }
+.pd-finance-budget-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
+.pd-finance-budget-grid label { display: grid; gap: 3px; font-size: 11px; color: var(--notible-muted); }
+.pd-finance-budget-grid input { inline-size: 100%; box-sizing: border-box; }
+.pd-finance-threshold { display: inline-flex; align-items: center; gap: 2px; }
+.pd-finance-time-form { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
+.pd-finance-time-form label { display: grid; gap: 3px; font-size: 11px; color: var(--notible-muted); }
+.pd-finance-entry-form { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
+.pd-finance-entry-form label { display: grid; gap: 3px; font-size: 11px; color: var(--notible-muted); }
+.pd-finance-billable { align-self: end; grid-auto-flow: column; align-items: center; }
+.pd-finance-billable input { width: auto; height: auto; justify-self: start; }
+/* pd-card is a grid; a lone button child stretches to the column's full width. */
+.pd-card > .pd-primary { justify-self: start; }
+.pd-finance-schedule-form { display: flex; flex-wrap: wrap; gap: 8px; padding-bottom: 8px; }
+.pd-finance-schedule-scroll { overflow-x: auto; }
+.pd-finance-schedule { display: grid; gap: 2px; align-items: center; }
+.pd-finance-schedule > strong { font-size: 11px; color: var(--notible-muted); }
+.pd-finance-schedule > button { min-block-size: 26px; border: 1px solid var(--notible-border); border-radius: 4px; background: var(--notible-surface); color: var(--notible-text); cursor: pointer; font: inherit; font-size: 12px; }
+
+/* Row geometry stays synchronized with the dependency SVG. */
+.pd-tabs button.active { color: var(--notible-accent); }
+.pd-timeline-heading, .pd-gantt-zoom-label, .pd-plan-col-head { text-transform: none; letter-spacing: 0; }
+.pd-gantt-rows { max-height: min(62dvh, 680px); border-block: 1px solid var(--notible-border); }
+.pd-gantt-row { border-bottom: 1px solid var(--notible-border-subtle); }
+.pd-gantt-row:has(.pd-gantt-bar.is-selected) { background: var(--notible-selected); }
+.pd-gantt-kind, .pd-gantt-status { text-transform: none; border: 0; background: var(--notible-hover); }
+.pd-gantt-detail { padding: 16px; }
+.pd-metrics div { border: 0; border-inline-start: 1px solid var(--notible-border); border-radius: 0; padding: 8px 16px; }
+.pd-metrics div:first-child { border-inline-start: 0; }
+.pd-record-list { gap: 0; }
+.pd-record-list div { border: 0; border-bottom: 1px solid var(--notible-border-subtle); border-radius: 0; }
+.pd-plan-col { padding: 14px; background: var(--notible-hover); border-radius: 8px; }
+.pd-plan-card { padding: 12px; border-radius: 6px; background: var(--notible-surface); }
+.pd-more { position: relative; display: inline-flex; }
+.pd-more-menu { position: absolute; top: calc(100% + 4px); right: 0; z-index: 20; display: grid; min-width: 150px; padding: 4px; border: 1px solid var(--notible-border); border-radius: 8px; background: var(--notible-surface); box-shadow: 0 10px 28px rgb(0 0 0 / 14%); }
+.pd-finance-toolbar .pd-more-menu button { border: 0; background: transparent; text-align: left; padding: 6px 10px; border-radius: 6px; }
+.pd-finance-toolbar .pd-more-menu button:hover { background: var(--notible-hover); }
+.pd-finance-empty { margin: 4px 0 16px; color: var(--notible-muted); font-size: 13px; }
+/* Metrics in an even grid with labels of one height (V-SURFACES-06). */
+.pd-metrics { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
+.pd-metrics span { min-height: 2.6em; }
+
+/* R4 T13: dates above the bars; blocked work stands out; a key says what the colours mean. */
+.pd-gantt-axis.pd-gantt-axis-top { margin-top: 0; margin-bottom: 6px; }
+:where(.pd-gantt-bar).is-blocked { background: var(--notible-warning); opacity: .9; }
+.pd-gantt-key { display: inline-flex; align-items: center; gap: 6px; margin-inline-start: auto; color: var(--notible-muted); font-size: 12px; }
+.pd-gantt-key > i.pd-gantt-bar { position: static; display: inline-block; width: 14px; height: 8px; min-width: 0; border-radius: 3px; margin-inline-start: 6px; cursor: default; }
+/* The Dependencies picker is one control in the row, not a full-width bar. */
+.pd-gantt-toolbar .nb-control { flex: 0 0 auto; width: auto; }

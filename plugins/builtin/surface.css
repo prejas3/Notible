@@ -1,0 +1,501 @@
+/*
+ * Shared surface primitives for builtin plugin UI.
+ *
+ * Before this file every builtin surface carried its own copy of the same
+ * five things — a primary button, a neutral button, a card, a labelled field
+ * and a status message — under its own class prefix. Nine namespaces meant
+ * four different primary buttons (padding 9/13, 10/14, 8/12, 7/12), card radii
+ * of 8, 9, 12 and 16px, and four unrelated ways of drawing an error. The
+ * screens looked like four different products because they were styled by four
+ * different people at four different times.
+ *
+ * Two rules for anything added here:
+ *
+ * 1. **Public tokens only.** Every colour is a `--notible-*` custom property,
+ *    the same vocabulary third-party plugin authors are given. No hex, and no
+ *    `var(--x, #hex)` fallbacks — a fallback is how a surface silently stops
+ *    following the theme (see the plugin-css-token-check guard). This file is
+ *    also the first builtin stylesheet to dogfood that vocabulary end to end.
+ * 2. **Primitives, not layout.** A card knows it is a card; it does not know
+ *    what grid it sits in. Per-screen layout stays in that screen's file.
+ *
+ * The legacy class names are folded into each selector list rather than
+ * rewritten in the TSX. That is deliberate: it makes this a pure stylesheet
+ * change with no risk of a renamed class silently losing its styling, and each
+ * list doubles as the record of what used to be duplicated. New surfaces
+ * should use the `.ns-*` names and add nothing to those lists.
+ */
+
+/* ---------- motion ---------- */
+
+/* Shared "view just mounted" fade — opacity/transform only (compositor-safe,
+   never layout-affecting), a one-shot `animation` that plays automatically
+   whenever React mounts a fresh node. Needs no JS state machine, so it can't
+   get stuck the way an animated grid-template-columns collapse did (dropped
+   from Core's focus mode in 0.82.5 after it broke live). Give a freshly
+   mounted panel/tab-pane this class, keyed so React actually remounts it on
+   switch rather than reusing the same node. */
+@media (prefers-reduced-motion: no-preference) {
+  .core-view-in { animation: core-view-in 160ms ease-out; }
+}
+@keyframes core-view-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: none; }
+}
+
+/* ---------- buttons ---------- */
+
+.ns-btn-primary,
+.btn-primary,
+.domain-primary,
+.planning-primary,
+.pd-primary,
+.cal-primary,
+.pp-primary,
+.plugin-view-load-row > button,
+.plugin-view-create-actions > button.btn-primary {
+  border: 1px solid var(--notible-accent);
+  border-radius: 8px;
+  padding: 8px 12px;
+  background: var(--notible-accent);
+  color: var(--notible-on-accent);
+  cursor: pointer;
+  font: inherit;
+}
+
+.ns-btn-primary:hover:not(:disabled),
+.btn-primary:hover:not(:disabled),
+.domain-primary:hover:not(:disabled),
+.planning-primary:hover:not(:disabled),
+.pd-primary:hover:not(:disabled),
+.cal-primary:hover:not(:disabled),
+.pp-primary:hover:not(:disabled) {
+  border-color: var(--notible-accent-hover);
+  background: var(--notible-accent-hover);
+}
+
+.ns-btn,
+.domain-secondary,
+.planning-secondary,
+.pd-secondary,
+.pd-multiselect-toggle,
+.cal-nav,
+.cal-today,
+.cal-form-actions button:not(.cal-primary):not(.cal-danger),
+.pp-custom-field-new button,
+.pp-custom-field-add,
+.plugin-query-actions button,
+.plugin-query-footer button {
+  border: 1px solid var(--notible-border);
+  border-radius: 8px;
+  padding: 8px 12px;
+  background: var(--notible-surface);
+  color: var(--notible-text);
+  cursor: pointer;
+  font: inherit;
+}
+
+.ns-btn:hover:not(:disabled),
+.domain-secondary:hover:not(:disabled),
+.planning-secondary:hover:not(:disabled),
+.pd-secondary:hover:not(:disabled),
+.pd-multiselect-toggle:hover,
+.cal-nav:hover,
+.cal-today:hover {
+  background: var(--notible-hover);
+}
+
+/* Toolbars pack many buttons into one strip, so they get a denser variant
+   rather than an unrelated definition. */
+.ns-btn-sm,
+.pd-gantt-toolbar button {
+  border: 1px solid var(--notible-border);
+  border-radius: 7px;
+  padding: 5px 10px;
+  background: var(--notible-surface);
+  color: var(--notible-text);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+}
+
+.ns-btn-danger,
+.cal-danger {
+  border: 1px solid var(--notible-danger);
+  border-radius: 8px;
+  padding: 8px 12px;
+  background: var(--notible-danger-surface);
+  color: var(--notible-danger);
+  cursor: pointer;
+  font: inherit;
+}
+
+/* Row-level actions: no box at rest, per the standing convention that a row's
+   actions must not clutter the row until you go looking for them. */
+.ns-btn-quiet,
+.wd-ignore,
+.pp-custom-field-remove,
+.pp-customize-btn,
+.pp-url-edit,
+.pp-order-grip,
+.plugin-view-tab-delete {
+  border: 0;
+  border-radius: 6px;
+  padding: 4px 8px;
+  background: transparent;
+  color: var(--notible-muted);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+}
+
+.ns-btn-quiet:hover,
+.wd-ignore:hover {
+  background: var(--notible-hover);
+  color: var(--notible-text);
+}
+
+.ns-btn:disabled,
+.ns-btn-primary:disabled,
+.ns-btn-sm:disabled,
+.ns-btn-danger:disabled,
+.btn-primary:disabled,
+.domain-primary:disabled,
+.domain-secondary:disabled,
+.planning-primary:disabled,
+.planning-secondary:disabled,
+.pd-primary:disabled,
+.pp-primary:disabled {
+  opacity: .5;
+  cursor: not-allowed;
+}
+
+.ns-link,
+.plugin-view-link {
+  border: 0;
+  background: transparent;
+  color: var(--notible-accent);
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+}
+
+/* ---------- cards ---------- */
+
+/* An outline, not a fill. A card painted with `--notible-surface` sits on a
+   page painted with `--notible-background`, so every form and every list on a
+   plugin screen came with its own faint slab of colour; stack two of them and
+   the screen is mostly boxes. The border already says "these things belong
+   together", which is the whole job. */
+.ns-card,
+.domain-card,
+.domain-plugin-header,
+.planning-create-card,
+.planning-list-card,
+.pd-card,
+.cal-form,
+.plugin-query-builder {
+  box-sizing: border-box;
+  border: 1px solid var(--notible-border);
+  border-radius: 12px;
+  padding: 16px;
+  background: transparent;
+}
+
+/* A card is a grid, and a grid stretches its children — which turned every
+   "Save" into a banner the width of the panel. A primary action that wide
+   reads as a section header, not as a button (same reasoning as
+   .pd-create-actions). */
+.ns-card > button,
+.domain-card > button {
+  justify-self: start;
+  min-width: 130px;
+}
+
+/* ---------- "add another one" ---------- */
+
+/* The dashed outline is the one control that should read as an empty slot
+   waiting to be filled, not as a button competing with the primary action. */
+.ns-add,
+.automation-add,
+.pp-custom-field-add {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 9px 12px;
+  border: 1px dashed var(--notible-border);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--notible-muted);
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+}
+
+.ns-add:hover,
+.automation-add:hover,
+.pp-custom-field-add:hover {
+  border-color: var(--notible-accent);
+  color: var(--notible-text);
+}
+
+/* ---------- fields ---------- */
+
+.ns-field,
+.domain-card label,
+.planning-create-card label,
+.pd-card label,
+.cal-form label,
+.properties-editor-field,
+.pp-manual-id {
+  display: grid;
+  gap: 5px;
+  color: var(--notible-muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.ns-input,
+.domain-card input,
+.domain-card select,
+.domain-card textarea,
+.planning-create-card input,
+.planning-create-card select,
+.pd-card input,
+.pd-card select,
+.cal-form input,
+.cal-form select,
+.properties-editor-field input,
+.properties-editor-field select,
+.pp-manual-id input,
+.pp-custom-field-new input,
+.pp-custom-field-new select,
+.pp-custom-field-new .nb-control-trigger,
+.plugin-view-load-row input,
+.plugin-view-create-form input,
+.plugin-view-create-form select,
+.plugin-view-create-form textarea,
+.canvas-link-picker input {
+  /* Flat "Properties panel" look, shared everywhere: no box, no fill —
+     a line and a place to type/pick. Fixed height so every field across
+     Tasks/Planning/Finance/Automations lines up regardless of tag/font. */
+  box-sizing: border-box;
+  width: 100%;
+  height: 34px;
+  border: 0;
+  border-bottom: 1px solid var(--notible-border);
+  border-radius: 0;
+  padding: 4px 2px 9px;
+  background: transparent;
+  color: var(--notible-text);
+  font: inherit;
+  /* The label above carries the weight; the value the user typed must not. */
+  font-weight: 400;
+}
+
+.ns-input:focus,
+.domain-card input:focus,
+.domain-card select:focus,
+.domain-card textarea:focus,
+.planning-create-card input:focus,
+.planning-create-card select:focus,
+.pd-card input:focus,
+.pd-card select:focus,
+.cal-form input:focus,
+.cal-form select:focus,
+.properties-editor-field input:focus,
+.properties-editor-field select:focus,
+.pp-custom-field-new input:focus,
+.pp-custom-field-new select:focus {
+  outline: none;
+  border-bottom-color: var(--notible-accent);
+}
+
+/* A checkbox is the one field where the control comes before its label. */
+.ns-field-check,
+.cal-form-checkbox,
+.properties-editor-bool {
+  display: flex;
+  flex-direction: row-reverse;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.ns-field-check input,
+.cal-form-checkbox input,
+.properties-editor-bool input {
+  width: auto;
+}
+
+/* Every native checkbox / radio on a builtin surface follows the theme accent
+   instead of the browser's default blue. One line beats a hand-drawn control. */
+.ns-field-check input,
+.cal-form-checkbox input,
+.properties-editor-bool input,
+.plugin-domain-view input[type="checkbox"],
+.plugin-domain-view input[type="radio"],
+.pd-panel input[type="checkbox"],
+.pd-panel input[type="radio"],
+.canvas-toolbar input[type="checkbox"],
+.canvas-report input[type="checkbox"],
+.pp-order-row input[type="checkbox"] {
+  accent-color: var(--notible-accent);
+}
+
+/* ---------- small pieces ---------- */
+
+/* "Installed", "Active", "3 types" — a fact about a row, not a control. */
+.ns-badge {
+  align-self: center;
+  border: 1px solid var(--notible-border);
+  border-radius: 999px;
+  padding: 2px 8px;
+  color: var(--notible-muted);
+  font-size: 11px;
+}
+
+.ns-inline-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--notible-muted);
+  font-size: 13px;
+}
+
+/* The chosen row of a list, marked by its border rather than by a fill — same
+   reasoning as the Plugin Matrix cards. */
+.domain-record-list button.is-selected {
+  border-color: var(--notible-accent);
+}
+
+/* ---------- status messages ---------- */
+
+.ns-message,
+.domain-plugin-message,
+.planning-message,
+.pd-message,
+.cal-error,
+.plugin-view-error {
+  margin: 0;
+  border-radius: 8px;
+  padding: 9px 12px;
+  font-size: 13px;
+}
+
+.ns-message-error,
+.domain-plugin-message.error,
+.planning-error,
+.pd-message.pd-error,
+.cal-error,
+.plugin-view-error {
+  background: var(--notible-danger-surface);
+  color: var(--notible-danger);
+}
+
+.ns-message-success,
+.domain-plugin-message.success,
+.planning-notice,
+.pd-message.pd-notice {
+  background: var(--notible-success-surface);
+  color: var(--notible-success);
+}
+
+/* ---------- text ---------- */
+
+.ns-eyebrow,
+.domain-plugin-eyebrow,
+.planning-eyebrow,
+.settings-plugins-eyebrow {
+  margin: 0;
+  color: var(--notible-accent);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+}
+
+.ns-muted,
+.domain-muted,
+.pd-muted,
+.canvas-muted,
+.pp-muted {
+  margin: 0;
+  color: var(--notible-muted);
+  font-size: 12px;
+}
+
+.ns-empty,
+.planning-empty,
+.pd-empty,
+.wd-empty,
+.automation-empty,
+.plugin-view-empty {
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+  margin: 0;
+  padding: 28px 12px;
+  color: var(--notible-muted);
+  font-size: 13px;
+  text-align: center;
+}
+
+/* ---------- plugin surface page header ---------- */
+
+/* Every builtin surface opens with the same three elements. They were defined
+   once, scoped to one screen, in views-ui.css — which is why three other
+   surfaces rendered their heading at browser-default size. */
+.ns-surface,
+.plugin-domain-view {
+  max-width: 100%;
+  padding: 4px 0 24px;
+  color: var(--notible-text);
+}
+
+.ns-surface-title,
+.settings-h2 {
+  margin: 4px 0 6px;
+}
+
+.ns-surface-intro,
+.settings-intro {
+  margin: 0 0 14px;
+  color: var(--notible-muted);
+}
+
+.ns-btn-icon,
+.btn-icon {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--notible-border);
+  border-radius: 8px;
+  background: var(--notible-surface);
+  color: var(--notible-muted);
+  cursor: pointer;
+  font: inherit;
+}
+
+.ns-btn-icon:hover,
+.btn-icon:hover {
+  background: var(--notible-hover);
+  color: var(--notible-text);
+}
+
+/* Shared control rhythm across builtin screens. */
+.ns-btn, .ns-btn-primary, .domain-primary, .domain-secondary,
+.planning-primary, .planning-secondary, .pd-primary, .pd-secondary,
+.cal-primary, .pp-primary { min-block-size: 36px; font-weight: 550; transition: background-color 160ms, border-color 160ms; }
+:where(.domain-plugin-surface, .planning-surface, .pd-dashboard, .cal-month, .plugin-domain-view, .wd-root, .automation-plugin-surface) :is(button, input, select, textarea):focus-visible { outline: 2px solid var(--notible-accent); outline-offset: 2px; }
+.ns-card, .domain-card, .planning-create-card, .planning-list-card, .pd-card { border-color: var(--notible-border-subtle); border-radius: 8px; }
+@media (prefers-reduced-motion: reduce) {
+  .ns-btn, .ns-btn-primary, .domain-primary, .domain-secondary,
+  .planning-primary, .planning-secondary, .pd-primary, .pd-secondary,
+  .cal-primary, .pp-primary { transition: none; }
+}
+
+/* Marks UI a theme pack must never restyle away (Core adds the enforcing rules). */
+.core-critical { isolation: isolate; }

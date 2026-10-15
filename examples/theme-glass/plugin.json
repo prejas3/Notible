@@ -1,0 +1,10 @@
+{
+  "id": "example.theme-glass",
+  "name": "Glass (example theme)",
+  "version": "1.0.0",
+  "apiVersion": "1.0",
+  "author": "Notible",
+  "description": "Frosted-glass sidebar over a soft gradient. A starting point for your own theme.",
+  "styles": ["theme.css"],
+  "theme": { "name": "Glass", "mode": "dark", "description": "Frosted glass over a soft gradient." }
+}

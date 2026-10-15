@@ -1,0 +1,1 @@
+{"id":"notible.editor-extensions","name":"Editor extensions","version":"0.1.0","apiVersion":"0.1","entry":"index.js","permissions":["workspace.ui","editor.extension"]}

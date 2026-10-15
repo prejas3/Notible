@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 980 256" role="img" aria-labelledby="title desc">
+  <title id="title">Notible logo</title><desc id="desc">The Notible notch and wordmark.</desc>
+  <rect width="256" height="256" rx="56" fill="#090B0D"/>
+  <path fill="#F3F0E8" d="M56 44c-6.627 0-12 5.373-12 12v88c0 6.627 5.373 12 12 12h28c8.837 0 16 7.163 16 16v28c0 6.627 5.373 12 12 12h88c6.627 0 12-5.373 12-12v-88c0-6.627-5.373-12-12-12h-28c-8.837 0-16-7.163-16-16V56c0-6.627-5.373-12-12-12H56Z"/>
+  <circle cx="128" cy="128" r="17" fill="#7557E8"/>
+  <text x="304" y="164" fill="#090B0D" font-family="Segoe UI Variable Display, Segoe UI, sans-serif" font-size="112" font-weight="650" letter-spacing="-5">Notible</text>
+  <circle cx="548" cy="78" r="8" fill="#7557E8"/>
+</svg>

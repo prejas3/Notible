@@ -1,0 +1,146 @@
+# Notible Sync Simple
+
+**Wygoda zamiast prywatności.** Ten plugin ma synchronizować workspace bez
+parowania urządzeń: klucz szyfrujący leży na Twoim Dysku obok migawek, więc
+**każdy, kto zaloguje się na to konto Google, przeczyta i nadpisze workspace**.
+Instalujesz go, logujesz się na drugiej maszynie i działa — nic nie
+przepisujesz.
+
+Jeśli chcesz, żeby klucz nigdy nie opuścił Twoich urządzeń, użyj **Notible
+Sync** (`plugins/notible-sync`) — ten sam plugin z parowaniem.
+
+> **Cena, nazwana wprost.** Ten tryb **nie chroni Twoich notatek przed nikim,
+> kto ma dostęp do tego konta Google.** Taka osoba — łącznie z samym Google —
+> może odczytać Twoje notatki, dopisać do nich treści, cofnąć Twoje zmiany
+> oraz **trwale skasować notatki na wszystkich urządzeniach**, bez możliwości
+> odzyskania ich z drugiej maszyny. Dotyczy to również migawek, które są już
+> na Dysku. Odinstalowanie tego nie cofa: klucz raz umieszczony na Dysku
+> zostaje w koszu, w historii wersji i na każdym urządzeniu, które go pobrało.
+> Notible nie ma serwera i nie widzi niczego — to nie jest pocieszenie:
+> zaufanie zostało przeniesione na Google, nie usunięte.
+> Spec: `2026-08-20-sync-without-pairing-design.md` (dokument wewnętrzny, nieopublikowany).
+
+Foldery na Dysku są rozdzielone (`Notible Sync Simple` vs `Notible Sync`),
+więc oba pluginy nie mogą sobie nawzajem podrzucić migawek.
+
+Wymaga Notible **0.59.0** lub nowszego (Plugin API 1.7 — uprawnienia `network`
+i `data.sync`, w tym `data.sync.media` dla obrazów oraz logowanie przez
+przeglądarkę bez przepisywania kodu).
+
+> **Uwaga na „Remove" w Plugin host.** Do 0.48.1 włącznie usunięcie pluginu
+> zainstalowanego z folderu **kasuje ten folder z dysku** (`db.rs:3414`
+> woła `remove_dir_all` na `install_path`, którym dla instalacji lokalnej jest
+> Twój katalog źródłowy). Trzymaj źródła w gicie albo poza katalogiem, który
+> wskazujesz aplikacji, dopóki nie wyjdzie 0.48.2.
+
+## Jak to działa
+
+Każde urządzenie zapisuje **jeden plik** — `device-<id>.json` — w widocznym
+folderze `Notible Sync Simple` na Dysku, i czyta pliki pozostałych urządzeń.
+Nikt nie pisze do cudzego pliku, więc nie ma konfliktów zapisu, blokad ani CRDT.
+
+Klucz szyfrujący leży w tym samym folderze, jako `workspace-key.txt`. Powstaje
+przy pierwszej synchronizacji, a każde kolejne urządzenie po prostu go pobiera.
+Gdy dwie maszyny wystartują równocześnie, Dysk przyjmie **dwa** pliki klucza
+(pozwala na duplikaty nazw) — wygrywa ten o najniższym `id`, tak samo widziany
+przez każde urządzenie, więc żadna migawka nie zostaje pod kluczem, którego
+nikt już nie czyta.
+
+Plugin czyta i zapisuje przez `context.data.sync`, czyli dziennik zmian, który
+Notible prowadzi przy każdym zapisie. Dzięki temu kasowanie propaguje się przez
+prawdziwe tombstones, a nie przez zgadywanie „obiektu nie ma, czyli zniknął".
+
+## Pierwsze uruchomienie
+
+1. Na pierwszym urządzeniu: Ustawienia → Plugin panels → Notible Sync Simple →
+   **Sign in with Google**.
+2. Na drugim urządzeniu: to samo, na to samo konto. Nie ma czego przepisywać.
+3. **Synchronise now** po obu stronach.
+
+Kolejność pierwszego kliknięcia nie ma znaczenia. Nic się nie scala i nic nie
+znika: jeśli masz projekt „Acme" na obu maszynach, zostaną **dwa** projekty,
+bo to dwa różne obiekty. Sklejenie ich to osobna, ręczna decyzja.
+
+## Obrazy
+
+Wklejone zrzuty ekranu jadą **osobnym plikiem na Dysk, raz na obrazek** —
+nazwa jest UUID-em, więc plik, który już tam jest, jest tym właściwym. Nie w
+migawce: migawka leci co cykl, a 20 MB zrzutu w środku to nie synchronizacja,
+tylko rachunek za transfer. Leżą w podfolderze `media/`, osobno od migawek.
+
+**Musisz to najpierw włączyć:** Ustawienia → Plugin host → „Let plugins read
+pasted images". Domyślnie wyłączone i włączenie otwiera natywne okno. Powód
+jest nieprzyjemny i lepiej, żebyś go znał: Notible nie umie odróżnić wtyczek
+od siebie, więc gdy to włączysz, **każda** zainstalowana wtyczka może czytać
+Twoje wklejone obrazy i wysłać je gdziekolwiek. Trzymaj to włączone tylko
+wtedy, gdy synchronizujesz, i tylko z wtyczkami, którym ufasz.
+
+Bez włączenia reszta działa normalnie — notatki jeżdżą, a status mówi raz
+„images not sent".
+
+Czego nie ma: obrazek skasowany na jednej maszynie **nie znika** z Dysku ani
+z drugiej maszyny. Nagrobek pliku to kolejna droga do nieodwracalnej utraty
+danych, a osierocony obraz kosztuje miejsce.
+
+## Czego ten plugin nie robi
+
+- **Nie synchronizuje załączników innych niż obrazy.** Wklejone obrazy
+  jeżdżą od 0.2.0 (wymaga Notible 0.56.0), reszta plików nie.
+- **Nie scala duplikatów.** Osobna funkcja, jeszcze nie napisana.
+- **Nie jest czasem rzeczywistym.** Domyślnie automatycznie: przy starcie, ok. minutę po zmianie i co N minut (można wyłączyć). Panel pokazuje, kiedy każde urządzenie ostatnio wysłało zmiany.
+- **Edycja na dwóch urządzeniach naraz.** Notatka edytowana na dwóch urządzeniach między synchronizacjami zwykle zachowuje obie zmiany: scalają się różne akapity, tytuły i właściwości, a tabele po komórkach. Kopia konfliktu („(conflict copy — urządzenie, data)”) powstaje, gdy ta sama linia, ten sam tytuł lub ta sama właściwość zmieniła się po obu stronach albo gdy plugin nie umie ustalić, która wersja była pierwsza (np. po resecie lub przywróceniu kopii, bez zapamiętanego wspólnego punktu wyjścia, przy bogatej treści lub po wielu wymianach). Kopie są deterministyczne i może je utworzyć którekolwiek urządzenie, więc na obu wyglądają tak samo. Urządzenia ze starszą wersją pluginu zachowują się jak dawniej (zostaje nowsza wersja).
+
+## Rzeczy, które musisz wiedzieć, zanim to włączysz
+
+**Szyfrowanie zostaje, ale chroni już tylko przed dwoma rzeczami:** wyciekiem
+pojedynczej migawki **bez pliku klucza** oraz pośrednikami w sieci. Nie chroni
+przed nikim, kto otworzy to konto — klucz leży obok migawek. Tyle i tylko tyle
+wolno tu obiecywać.
+
+**Każdy zalogowany na to konto jest równie zaufany.** Szyfrowanie dowodzi
+tylko, że migawkę zapisał ktoś, kto miał klucz — czyli ktokolwiek z dostępem
+do Dysku. Jedyną realną barierą przed wrogą migawką jest walidator w
+`main.js`; dlatego jest tak rygorystyczny i nie wolno go rozluźniać.
+
+**Chcesz, żeby klucz nie opuścił Twoich urządzeń?** Użyj `Notible Sync`.
+Foldery na Dysku są rozdzielone, więc oba pluginy nigdy nie zobaczą swoich
+migawek — urządzenie w drugim trybie jest po prostu nieobecne, nie zepsute.
+
+**Sekretu OAuth nie ma już w tym pliku.** Od API 1.7 klient i scope'y należą
+do Core (`plugin_oauth.rs`), a plugin podaje tylko nazwę providera
+(`google.drive.file`). Powód nie jest kosmetyczny: komenda, której wywołujący
+mógłby podać własny `client_id` i scope'y, pozwoliłaby **dowolnej**
+zainstalowanej wtyczce wyświetlić prawdziwy ekran zgody Google z prośbą
+o cokolwiek. Sufit jest teraz sztywny i wynosi `drive.file`.
+
+**Logowanie nie ma już kodu do przepisywania.** Device flow (`google.com/device`
+plus kod) był tam, bo plugin nie ma gniazda, na którym złapałby
+przekierowanie. Core ma, więc używa flow przeznaczonego dla aplikacji
+desktopowych: otwiera przeglądarkę, łapie odpowiedź na `127.0.0.1`, koniec.
+
+**Token odświeżający leży w `context.storage`**, czyli w `localStorage`
+webview. Każdy inny zainstalowany plugin może go odczytać. Dlatego „Sign out"
+robi też `revoke` po stronie Google — wylogowuj się, jeśli przestajesz
+używać.
+
+**Folder `Notible Sync Simple` jest widoczny na Twoim Dysku** i możesz go skasować.
+To nie skasuje niczego w notatkach: brak pliku peera nigdy nie jest odczytywany
+jako polecenie usunięcia.
+
+## Sprawdzian
+
+```
+node plugins/notible-sync-simple/self-check.mjs
+```
+
+Pokrywa tożsamość manifestu, kodowanie klucza, round-trip zaszyfrowanej
+migawki, odrzucenie migawki podpisanej innym kluczem i migawki ze zmienionym
+bitem, walidację cudzych danych oraz odkładanie zmian do otwartej notatki.
+
+## 0.5.5 ? trash conflict fix
+
+Trash-only changes no longer create conflict copies, including with stale sync bases. Genuine losing edits remain recoverable in trash when the winning version is trashed. Trashed tables are not merged. Update the plugin on every device; Core 0.90.2 also includes the automation repeat-log fix.
+
+## 0.5.8 — scalanie trójstronne
+
+Notatka zmieniona na dwóch urządzeniach między synchronizacjami zachowuje teraz obie zmiany, jeśli dotyczą różnych linii, a to samo działa dla tytułów i właściwości. Plugin pamięta krótką historię wersji każdej notatki w magazynie pluginu w Core (wymaga Notible 0.95.0, API 1.25) i z niej wyznacza wspólny punkt wyjścia. Kopia konfliktu powstaje tylko wtedy, gdy ta sama linia, tytuł lub właściwość zmieniły się po obu stronach, albo gdy nie da się ustalić kolejności wersji; wtedy działa dawna reguła „nowsza wygrywa, przegrana obok”. Zaktualizuj plugin na każdym urządzeniu osobno.

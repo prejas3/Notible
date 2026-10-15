@@ -1,0 +1,10 @@
+{
+  "id": "example.pomodoro",
+  "name": "Pomodoro",
+  "version": "0.1.0",
+  "apiVersion": "0.1",
+  "description": "A focus timer in the sidebar. 25 minutes of work, 5 minutes of break, and a notice when each one ends.",
+  "author": "Notible example",
+  "entry": "main.js",
+  "permissions": ["workspace.ui"]
+}

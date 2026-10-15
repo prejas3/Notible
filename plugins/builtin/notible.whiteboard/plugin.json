@@ -1,0 +1,1 @@
+{"id":"notible.whiteboard","name":"Whiteboard","version":"0.1.0","apiVersion":"0.1","entry":"index.js","permissions":["data.read","data.write","workspace.ui","editor.extension"],"sync":"data"}

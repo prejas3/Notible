@@ -1,0 +1,60 @@
+/* Field label, input and checkbox layout come from surface.css. */
+
+.properties-editor-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; min-width: 0; }
+@media (max-width: 560px) { .properties-editor-grid { grid-template-columns: 1fr 1fr; } }
+/* `.properties-editor`'s single implicit column defaults to `auto` track
+   sizing, which is content-based (max-content) — with `.properties-editor-grid`
+   as a child, its own auto-fill/minmax(150px, 1fr) tracks get measured against
+   an indefinite available width during that max-content pass and can resolve
+   to far more than the visible column count, dragging the whole column (and
+   every sibling row sharing it: Tags, More properties, custom fields...) out
+   to that width. `minmax(0, 1fr)` makes the column's size follow the actual
+   available space instead, which also gives the auto-fill grid inside it a
+   definite width to wrap against. Panel scrolled sideways without this. */
+.properties-editor { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; min-width: 0; }
+.properties-editor-tags { min-width: 0; }
+/* No margin-top here: `.properties-editor`'s `gap: 12px` already puts that
+   much space above this row. padding-top matches it exactly so the border
+   line sits centred between equal gaps above and below, instead of the
+   12px-above/10px-below mismatch a stray margin-top used to add. */
+.properties-editor-more { border-top: 1px solid var(--notible-border); padding: 12px 0 6px; }
+.properties-editor-more summary { cursor: pointer; color: var(--notible-muted); font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.02em; }
+.properties-editor-more[open] summary { margin-bottom: 12px; }
+/* Native `<details>` snaps open/closed with no transition by default. The
+   `::details-content` pseudo-element + `interpolate-size` let the WebView2/
+   Chromium runtime this app ships on animate straight to/from `auto` height —
+   no JS measuring, no wrapper div. */
+@media (prefers-reduced-motion: no-preference) {
+  .properties-editor-more { interpolate-size: allow-keywords; }
+  .properties-editor-more::details-content { height: 0; overflow: hidden; transition: height 200ms ease, content-visibility 200ms allow-discrete; }
+  .properties-editor-more[open]::details-content { height: auto; }
+}
+.properties-editor-tags { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; border: 1px solid var(--notible-border); border-radius: 8px; padding: 6px 7px; background: var(--notible-surface); }
+.properties-editor-tag { display: inline-flex; align-items: center; gap: 4px; border-radius: 999px; padding: 2px 4px 2px 9px; color: var(--notible-on-accent); font-size: 11px; font-weight: 600; }
+.properties-editor-tag button { border: 0; background: transparent; color: inherit; opacity: .8; cursor: pointer; padding: 0 4px; font: inherit; line-height: 1; }
+.properties-editor-tag button:hover { opacity: 1; }
+.properties-editor-tag-input-wrap { position: relative; flex: 1 0 80px; min-width: 80px; max-width: 160px; }
+.properties-editor-tags input { width: 100%; border: 0; padding: 3px 2px; background: transparent; color: var(--notible-text); font: inherit; font-weight: 400; }
+.properties-editor-tags input:focus { outline: none; }
+.properties-editor-tag-suggest { position: absolute; top: calc(100% + 4px); left: 0; z-index: 30; display: flex; flex-direction: column; min-width: 140px; max-height: 180px; overflow-y: auto; padding: 4px; border: 1px solid var(--notible-border); border-radius: 8px; background: var(--notible-surface); box-shadow: 0 4px 16px rgba(0, 0, 0, .25); }
+.properties-editor-tag-suggest button { border: 0; border-radius: 5px; padding: 5px 8px; background: transparent; color: var(--notible-text); font: inherit; font-size: 12px; text-align: left; }
+.properties-editor-tag-suggest button:hover,
+.properties-editor-tag-suggest button.active { background: var(--notible-selected); }
+
+/* Dependencies: one row per predecessor (name · rule · remove), full grid
+   width. */
+.properties-editor-deps { grid-column: 1 / -1; display: grid; gap: 6px; min-width: 0; }
+.properties-editor-deps-empty { margin: 0; color: var(--notible-muted); font-size: 12px; }
+.properties-editor-deps-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(120px, 180px) auto; align-items: center; gap: 8px; }
+.properties-editor-deps-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; color: var(--notible-text); }
+.properties-editor-deps-row > button { border: 1px solid var(--notible-border); border-radius: 6px; background: var(--notible-surface); color: var(--notible-muted); cursor: pointer; padding: 4px 8px; font: inherit; line-height: 1; }
+.properties-editor-deps-row > button:hover { color: var(--notible-danger); }
+@media (max-width: 560px) { .properties-editor-deps-row { grid-template-columns: 1fr auto; } .properties-editor-deps-row > :nth-child(2) { grid-column: 1 / -1; } }
+
+/* Field customization uses the same quiet rows as the rest of Settings. */
+.pp-order-editor { display: grid; gap: 18px; }
+.pp-order-section { min-width: 0; }
+.pp-order-section h4 { margin: 0 0 8px; font-size: 13px; font-weight: 600; }
+.pp-order-list { list-style: none; margin: 0; padding: 4px; border: 1px solid var(--notible-border-subtle); border-radius: 8px; min-height: 44px; }
+.pp-order-empty { padding: 16px; color: var(--notible-muted); font-size: 12px; text-align: center; }
+.pp-order-actions { display: flex; justify-content: flex-end; gap: 8px; border-top: 1px solid var(--notible-border-subtle); padding-top: 14px; }

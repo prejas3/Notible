@@ -1,0 +1,67 @@
+/* Primitives (buttons, card, fields, error message) come from surface.css. */
+
+.cal-month { display: grid; gap: 10px; }
+.cal-month-header { display: flex; align-items: center; gap: 10px; }
+.cal-month-header strong { flex: 1; color: var(--notible-text); font-size: 15px; text-transform: capitalize; }
+/* Today / month arrows / Connections — burgundy fill, matching the Core
+   button decision (0.75.1). The bare <button> fallback rendered them white. */
+.cal-nav, .cal-today {
+  padding: 5px 10px;
+  border: 1px solid var(--notible-accent);
+  border-radius: 8px;
+  background: var(--notible-accent);
+  color: var(--notible-on-accent);
+  cursor: pointer;
+  font: inherit;
+}
+.cal-nav:hover:not(:disabled), .cal-today:hover:not(:disabled) {
+  border-color: var(--notible-accent-hover);
+  background: var(--notible-accent-hover);
+}
+.cal-today[aria-expanded="true"] { background: var(--notible-accent-hover); }
+.cal-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 1px; border: 1px solid var(--notible-border); border-radius: 12px; overflow: hidden; background: var(--notible-border); }
+.cal-weekday { padding: 7px 8px; background: var(--notible-surface); color: var(--notible-muted); font-size: 11px; font-weight: 700; text-align: center; text-transform: uppercase; }
+.cal-cell { min-height: 84px; padding: 5px 6px; background: var(--notible-surface); cursor: pointer; }
+.cal-cell:hover { background: var(--notible-hover); }
+.cal-cell-outside { background: var(--notible-background); color: var(--notible-muted); }
+.cal-cell-today .cal-cell-date { display: inline-grid; place-items: center; width: 20px; height: 20px; border-radius: 50%; background: var(--notible-accent); color: var(--notible-on-accent); }
+.cal-cell-date { font: inherit; font-size: 12px; color: var(--notible-text); background: none; border: 0; padding: 2px; margin: -2px; cursor: pointer; border-radius: 4px; }
+.cal-cell-date:hover { background: var(--notible-hover); }
+.cal-cell-date:focus-visible { outline: 2px solid var(--notible-accent); outline-offset: 1px; }
+.cal-cell-events { display: grid; gap: 3px; margin-top: 4px; }
+.cal-event { display: block; width: 100%; overflow: hidden; border: 1px solid var(--notible-border); border-radius: 6px; padding: 2px 5px; background: var(--notible-hover); color: var(--notible-text); text-align: left; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; font-size: 11px; }
+.cal-event:hover { border-color: var(--notible-accent); }
+.cal-event-external { background: var(--notible-hover); border: 1px dashed var(--notible-border); color: var(--notible-muted); font: inherit; font-size: 11px; }
+.cal-event-external:hover { border-style: solid; color: var(--notible-text); }
+.cal-form { display: grid; gap: 10px; }
+.cal-detail .cal-detail-line { margin: 0; color: var(--notible-text); }
+.cal-detail .cal-detail-meta { margin: 0; color: var(--notible-muted); font-size: 12px; }
+.cal-form-row { display: flex; gap: 14px; align-items: end; }
+.cal-form-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.cal-conn { display: grid; gap: 10px; padding: 12px; border: 1px solid var(--notible-border); border-radius: 10px; background: var(--notible-surface); }
+.cal-conn h3 { margin: 0; font-size: 13px; }
+.cal-conn-off { margin: 0; color: var(--notible-muted); font-size: 12px; }
+.cal-conn-row { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+.cal-conn-ok { color: var(--notible-accent); font-size: 12px; }
+.cal-conn-provider { display: grid; gap: 6px; padding-top: 8px; border-top: 1px solid var(--notible-border); }
+.cal-conn-sources { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.cal-conn-sources label { display: flex; align-items: center; gap: 7px; font-size: 13px; }
+.cal-conn-empty { color: var(--notible-faint); font-size: 12px; }
+.cal-secondary { padding: 4px 10px; border: 1px solid var(--notible-border); border-radius: 7px; background: transparent; color: var(--notible-muted); cursor: pointer; font: inherit; font-size: 12px; }
+
+@media (max-width: 620px) { .cal-cell { min-height: 60px; } }
+
+/* Navigation stays neutral; the selected day owns the accent. */
+.cal-month { gap: 18px; }
+.cal-month-header strong { font-size: 20px; letter-spacing: -.02em; }
+.cal-nav, .cal-today { border-color: var(--notible-border); background: var(--notible-surface); color: var(--notible-text); }
+.cal-nav:hover:not(:disabled), .cal-today:hover:not(:disabled) { border-color: var(--notible-border); background: var(--notible-hover); }
+.cal-today[aria-expanded="true"] { background: var(--notible-selected); color: var(--notible-accent); }
+.cal-grid { border-radius: 8px; }
+.cal-weekday { padding: 10px; text-transform: none; font-weight: 550; background: var(--notible-hover); }
+.cal-cell { min-height: 104px; padding: 8px; }
+
+/* R4 T9: the form floats beside the day you double-clicked; a day under a dragged event is outlined. */
+.cal-form.cal-form-floating { position: fixed; z-index: 60; width: min(380px, calc(100vw - 16px)); max-height: calc(100vh - 16px); overflow-y: auto; box-shadow: 0 14px 40px rgb(0 0 0 / 18%); }
+.cal-cell.cal-cell-drop { outline: 2px solid var(--notible-accent); outline-offset: -2px; }
+.cal-event { touch-action: none; cursor: grab; }

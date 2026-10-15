@@ -1,0 +1,120 @@
+/* Buttons, fields and inputs come from surface.css (the underline field
+   style is the shared default there now — 0.65.0). What's left below is
+   .pp-panel-specific sizing/spacing, not the field look itself. */
+
+/* grid-template-columns: minmax(0, 1fr) instead of the implicit `auto`
+   column — same fix as `.properties-editor`, same reason: a nested
+   auto-fill grid's intrinsic sizing was inflating this column (and the
+   whole panel) far past the actual sidebar width. */
+.pp-panel { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; align-content: start; min-width: 0; }
+.pp-heading { display: flex; align-items: center; gap: 8px; justify-content: space-between; }
+.pp-customize-btn { display: inline-flex; align-items: center; margin-left: auto; }
+.pp-order-editor { display: grid; gap: 16px; }
+.pp-order-section h4 { margin: 0 0 6px; color: var(--notible-muted); font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; }
+.pp-order-list { display: grid; gap: 2px; min-height: 8px; margin: 0; padding: 0; list-style: none; }
+.pp-order-row { display: flex; align-items: center; gap: 6px; padding: 6px 2px; border-bottom: 1px solid var(--notible-border); touch-action: none; }
+.pp-order-row.is-dragging { opacity: .4; }
+.pp-order-row label { display: flex; align-items: center; gap: 8px; color: var(--notible-text); font-size: 13px; font-weight: 400; }
+.pp-order-grip { display: inline-flex; align-items: center; flex: 0 0 auto; color: var(--notible-muted); cursor: grab; touch-action: none; }
+.pp-order-grip:active { cursor: grabbing; }
+.pp-order-empty { padding: 10px 2px; border: 1px dashed var(--notible-border); border-radius: 6px; color: var(--notible-muted); font-size: 12px; text-align: center; }
+.pp-order-actions { display: flex; justify-content: flex-end; gap: 8px; }
+.pp-heading h3 { margin: 0; color: var(--notible-text); font-size: 13px; text-transform: uppercase; letter-spacing: .04em; }
+.pp-busy { color: var(--notible-muted); font-size: 11px; }
+
+.pp-panel .properties-editor-field,
+.pp-panel .pp-manual-id {
+  gap: 8px;
+  color: var(--notible-muted);
+  font-size: 13px;
+  font-weight: 600;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.pp-panel .properties-editor-field input,
+.pp-panel .properties-editor-field select,
+.pp-panel .pp-manual-id input {
+  border: 0;
+  border-bottom: 1px solid var(--notible-border);
+  border-radius: 0;
+  padding: 4px 2px 9px;
+  background: transparent;
+  color: var(--notible-text);
+  font-size: 15px;
+}
+
+.pp-panel .properties-editor-field input:focus,
+.pp-panel .properties-editor-field select:focus {
+  outline: none;
+  border-bottom-color: var(--notible-accent);
+}
+
+.pp-panel .properties-editor-bool {
+  border-bottom: 0;
+}
+
+.pp-panel .properties-editor-grid { gap: 16px; }
+.pp-panel .properties-editor { gap: 16px; }
+
+.pp-panel .properties-editor-tags {
+  border: 0;
+  border-radius: 0;
+  padding: 0;
+  background: transparent;
+  gap: 8px;
+}
+.pp-panel .properties-editor-tag { padding: 5px 6px 5px 12px; font-size: 12px; }
+.pp-panel .properties-editor-tags input { padding: 4px 2px 8px; border-bottom: 1px solid var(--notible-border); }
+.pp-panel .properties-editor-tags input:focus { border-bottom-color: var(--notible-accent); }
+/* Always in the layout, empty or not: a message that appears and disappears
+   between the heading and the first field pushed the whole form down and back
+   on every single save. */
+.pp-status { margin: 0; min-height: 15px; color: var(--notible-muted); font-size: 12px; }
+.pp-status.pp-error { color: var(--notible-danger); }
+.pp-custom-fields { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; padding-top: 10px; }
+.pp-custom-field { display: flex; align-items: flex-end; gap: 6px; min-width: 0; }
+.pp-custom-field .properties-editor-field { flex: 1; min-width: 0; }
+.pp-custom-field-remove { flex: 0 0 auto; font-size: 15px; line-height: 1; padding: 6px; }
+.pp-custom-field-remove:hover { color: var(--notible-danger); }
+.pp-custom-field-new { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); align-items: end; gap: 6px; }
+.pp-custom-field-new button:not(.nb-control-trigger), .pp-custom-field-add { padding: 6px 10px; font-size: 12px; }
+.pp-custom-field-add { color: var(--notible-muted); text-align: left; }
+.pp-custom-field-add:hover { color: var(--notible-text); }
+.pp-url-display { display: flex; align-items: baseline; gap: 6px; min-width: 0; padding: 4px 2px 9px; border-bottom: 1px solid var(--notible-border); }
+.pp-url-display a { flex: 1 1 auto; min-width: 0; overflow: hidden; color: var(--notible-text); font-size: 15px; text-decoration: none; text-overflow: ellipsis; white-space: nowrap; }
+.pp-url-display a:hover { color: var(--notible-accent); text-decoration: underline; cursor: pointer; }
+.pp-url-edit { display: inline-flex; align-items: center; flex: 0 0 auto; margin-left: auto; }
+.pp-tabs { display: flex; gap: 18px; border-bottom: 1px solid var(--notible-border); }
+.pp-tabs button { border: 0; border-bottom: 2px solid transparent; margin-bottom: -1px; padding: 0 0 8px; background: transparent; color: var(--notible-muted); cursor: pointer; font: inherit; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; }
+.pp-tabs button.is-active { border-bottom-color: var(--notible-accent); color: var(--notible-text); }
+.pp-tab-content { min-width: 0; }
+@media (prefers-reduced-motion: no-preference) {
+  .pp-tab-content { animation: pp-tab-in 240ms cubic-bezier(.16, 1, .3, 1) both; }
+}
+@keyframes pp-tab-in {
+  from { opacity: 0; transform: translateX(8px); }
+  to { opacity: 1; transform: none; }
+}
+.pp-primary { padding: 7px 12px; font-size: 12px; }
+/* Same flat treatment as the Properties panel: no boxed fields or cards,
+   just a line under each thing. */
+.pp-activity { display: grid; gap: 14px; }
+.pp-activity-form { display: grid; gap: 10px; padding-bottom: 14px; border-bottom: 1px solid var(--notible-border); }
+.pp-activity-form-row { display: flex; gap: 10px; }
+.pp-activity-form-row > label { flex: 1; }
+.pp-activity-form textarea { box-sizing: border-box; width: 100%; resize: vertical; border: 0; border-bottom: 1px solid var(--notible-border); border-radius: 0; padding: 4px 2px 8px; background: transparent; color: var(--notible-text); font: inherit; font-size: 13px; }
+.pp-activity-form textarea:focus { outline: none; border-bottom-color: var(--notible-accent); }
+.pp-activity-list { display: grid; gap: 0; margin: 0; padding: 0; list-style: none; }
+.pp-activity-entry { border: 0; border-bottom: 1px solid var(--notible-border); border-radius: 0; padding: 10px 2px; }
+.pp-activity-entry:last-child { border-bottom: 0; }
+.pp-activity-entry-head { display: flex; align-items: center; gap: 8px; color: var(--notible-muted); font-size: 12px; }
+.pp-activity-entry-head strong { color: var(--notible-text); font-size: 13px; }
+.pp-activity-due { margin-left: auto; }
+.pp-activity-entry p { margin: 6px 0 0; color: var(--notible-text); font-size: 13px; white-space: pre-wrap; }
+
+.pp-url-field { min-width: 0; }
+.pp-url-field > a { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* The last field already ends in an underline; a second rule 6px below it read as a doubled line. */
+.pp-panel .properties-editor-more { border-top: 0; padding-top: 4px; }

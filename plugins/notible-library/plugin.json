@@ -1,0 +1,15 @@
+{
+  "id": "notible.library",
+  "name": "Library",
+  "version": "0.3.0",
+  "apiVersion": "1.28",
+  "minCoreVersion": "0.96.0",
+  "entry": "main.js",
+  "styles": ["styles.css"],
+  "description": "Organize books, films, series and games into named libraries.",
+  "author": "Notible",
+  "permissions": ["data.read", "data.write", "media.read", "media.write", "network", "workspace.ui"],
+  "networkHosts": ["openlibrary.org", "covers.openlibrary.org", "archive.org", "*.archive.org"],
+  "locales": { "pl": "locales/pl.json" },
+  "sync": "data"
+}

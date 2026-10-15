@@ -1,0 +1,10 @@
+{
+  "id": "dev.printprobe",
+  "name": "Print Probe (throwaway)",
+  "version": "0.0.1",
+  "apiVersion": "1.8",
+  "description": "THROWAWAY spike — checks whether window.print() in this webview produces a usable multi-page PDF when a tall document is reparented to <body> with CSS page breaks. Not for the market. Delete after the ReportIt print decision.",
+  "author": "Notible",
+  "entry": "main.js",
+  "permissions": ["workspace.ui"]
+}

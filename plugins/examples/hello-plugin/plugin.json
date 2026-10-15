@@ -1,0 +1,10 @@
+{
+  "id": "example.hello",
+  "name": "Hello plugin",
+  "version": "0.1.0",
+  "apiVersion": "1.0",
+  "description": "Local directory plugin fixture.",
+  "entry": "index.js",
+  "permissions": []
+}
+

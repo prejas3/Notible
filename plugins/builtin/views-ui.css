@@ -1,0 +1,311 @@
+/* Buttons, cards, inputs, messages and the eyebrow come from surface.css. */
+
+.plugin-view-load-row, .plugin-view-toolbar, .plugin-view-create-form { display: flex; flex-wrap: wrap; gap: 8px; }
+/* Cross-fade between Gallery/List/Table/Kanban/Calendar on layout switch.
+   Opacity + transform only, never grid-template-columns/width on this
+   container — that broke 0.82.5 live. Keyed remount on layout retriggers it.
+   NO fill-mode (`both`/`forwards`) here: it would keep a transform effect on
+   this wrapper after the fade ends, and a transformed ancestor becomes the
+   containing block of every `position: fixed` descendant — the Kanban drag
+   ghost and the view menus then render offset from the cursor (0.83.0-0.83.10).
+   The end keyframe equals the natural style, so nothing needs to be held.
+   scripts/animation-fill-check.mjs guards this. */
+@media (prefers-reduced-motion: no-preference) {
+  .plugin-view-content-fade { animation: plugin-view-fade-in 220ms cubic-bezier(.16, 1, .3, 1); }
+}
+@keyframes plugin-view-fade-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: none; }
+}
+.plugin-view-toolbar select, .plugin-view-toolbar input { box-sizing: border-box; min-height: 34px; border: 1px solid var(--notible-border); border-radius: 8px; padding: 6px 9px; background: var(--notible-surface); color: var(--notible-text); font: inherit; }
+.plugin-view-load-row input { flex: 1 1 260px; min-width: 180px; }
+.plugin-view-toolbar { align-items: center; padding: 12px 0; border-bottom: 1px solid var(--notible-border); }
+.plugin-view-toolbar label, .plugin-view-create-form label { display: grid; gap: 4px; color: var(--notible-muted); font-size: 11px; }
+/* Segmented control — one bordered group, not six loose text buttons. */
+.plugin-view-layouts { display: inline-flex; flex-wrap: wrap; border: 1px solid var(--notible-border); border-radius: 8px; overflow: hidden; }
+.plugin-view-layouts button { padding: 6px 11px; border: 0; border-inline-start: 1px solid var(--notible-border); border-radius: 0; background: transparent; color: var(--notible-muted); cursor: pointer; font: inherit; font-size: 12px; }
+.plugin-view-layouts button:first-child { border-inline-start: 0; }
+.plugin-view-layouts button:hover { background: var(--notible-hover); color: var(--notible-text); }
+.plugin-view-layouts button.active { background: var(--notible-selected); color: var(--notible-accent); }
+/* Toolbar actions read as buttons, not muted text. */
+.plugin-view-toolbar > button { padding: 6px 11px; border: 1px solid var(--notible-border); border-radius: 7px; background: var(--notible-surface); color: var(--notible-text); cursor: pointer; font: inherit; font-size: 12px; }
+.plugin-view-toolbar > button:hover { background: var(--notible-hover); }
+.plugin-view-toolbar > button.active { border-color: var(--notible-accent); color: var(--notible-accent); }
+.plugin-view-toolbar > button.btn-primary { border-color: var(--notible-accent); background: var(--notible-accent); color: var(--notible-on-accent); }
+.plugin-view-search { min-width: 160px; }
+.plugin-view-search:focus { outline: none; border-color: var(--notible-accent); }
+.plugin-view-sort { display: inline-flex; align-items: center; gap: 4px; }
+.plugin-view-sort-label { color: var(--notible-muted); font-size: 12px; }
+.plugin-view-sort-dir { display: inline-flex; align-items: center; justify-content: center; width: 30px; min-height: 30px; border: 1px solid var(--notible-border); border-radius: 7px; background: var(--notible-surface); color: var(--notible-text); cursor: pointer; font: inherit; }
+.plugin-view-sort-dir:hover { border-color: var(--notible-accent); }
+.plugin-view-tabs > button { padding: 6px 9px; border: 1px solid transparent; border-radius: 6px; background: transparent; color: var(--notible-muted); cursor: pointer; font: inherit; }
+.plugin-view-tabs { display: flex; align-items: center; gap: 4px; overflow-x: auto; padding: 14px 0 6px; border-bottom: 1px solid var(--notible-border); }
+.plugin-view-tab { display: inline-flex; align-items: center; gap: 2px; flex: 0 0 auto; border: 1px solid transparent; border-radius: 7px; }
+.plugin-view-tab.active { border-color: var(--notible-border); background: var(--notible-selected); }
+.plugin-view-tab > button { padding: 7px 9px; border: 0; background: transparent; color: var(--notible-muted); white-space: nowrap; cursor: pointer; font: inherit; }
+.plugin-view-tab.active > button { color: var(--notible-text); }
+.plugin-view-tab input { width: 120px; margin: 3px; }
+.plugin-view-tab-delete:hover { color: var(--notible-danger); }
+.plugin-view-summary { padding: 12px 0; color: var(--notible-muted); font-size: 12px; }
+.plugin-view-error { margin-top: 12px; }
+.plugin-view-empty { justify-items: start; text-align: left; padding: 12px 0; }
+/* No fill — the form sits on the app background like everything else on this
+   surface; a top border alone separates it from the toolbar. */
+.plugin-view-create-form { align-items: end; padding: 12px 0; border-top: 1px solid var(--notible-border); }
+.plugin-view-create-form label { align-self: stretch; }
+.plugin-view-create-form > label:not(.plugin-view-create-content) { flex: 1 1 160px; }
+.plugin-view-create-content { flex: 2 1 320px; }
+.plugin-view-create-form textarea { box-sizing: border-box; width: 100%; min-width: 240px; min-height: 34px; padding: 8px 9px; border: 1px solid var(--notible-border); border-radius: 8px; background: var(--notible-surface); color: var(--notible-text); font: inherit; line-height: 1.45; resize: vertical; }
+/* List and Gallery share one card markup; the container class decides the
+   shape. Both are outlined (no fill beyond the surface), title-first, with the
+   shared MetaRow. */
+.plugin-view-list { display: grid; gap: 14px; padding-top: 8px; }
+.plugin-view-list-group { display: grid; gap: 0; }
+.plugin-view-list-group-head { display: flex; align-items: center; gap: 8px; border: 0; background: transparent; padding: 2px 2px; color: var(--notible-muted); font: inherit; font-size: 12px; font-weight: 650; text-transform: uppercase; letter-spacing: .04em; text-align: left; cursor: pointer; }
+.plugin-view-list-group-chevron { flex: none; width: 10px; font-size: 10px; }
+.plugin-view-list-group-count { margin-inline-start: 2px; padding: 1px 7px; border-radius: 999px; background: var(--notible-hover); color: var(--notible-muted); font-size: 11px; font-weight: 600; text-transform: none; letter-spacing: 0; }
+.plugin-view-gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; padding-top: 8px; }
+
+/* List's own tabular row — Task | Status | Priority | Due date | row menu,
+   one fixed grid shared by the header and every row so the columns line up
+   down the whole list, across every status group. */
+.plugin-view-list-header, .plugin-view-list-row { display: grid; grid-template-columns: minmax(0, 1fr) 130px 110px 100px 28px; align-items: center; gap: 12px; }
+.plugin-view-list-header { padding: 4px 12px; color: var(--notible-muted); font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
+.plugin-view-list-row { padding: 12px; border: 0; border-bottom: 1px solid var(--notible-border-subtle); border-radius: 0; background: var(--notible-surface); color: var(--notible-text); text-align: left; cursor: pointer; font: inherit; }
+.plugin-view-list-row:hover { background: var(--notible-hover); }
+.plugin-view-list-row:focus-visible { outline: 2px solid var(--notible-accent); outline-offset: 1px; }
+.plugin-view-list-row-task { display: grid; gap: 2px; min-width: 0; }
+.plugin-view-list-status-pill { display: inline-flex; align-items: center; gap: 5px; padding: 3px 9px; border-radius: 999px; font-size: 12px; font-weight: 600; width: fit-content; }
+.plugin-view-list-status-pill .plugin-view-status-dot { width: 6px; height: 6px; }
+.plugin-view-list-priority { display: inline-flex; align-items: center; gap: 5px; color: var(--notible-muted); font-size: 12px; }
+.plugin-view-list-due { color: var(--notible-muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+.plugin-view-list-row-menu { opacity: 0; display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; border: 0; border-radius: 6px; background: transparent; color: var(--notible-muted); cursor: pointer; }
+.plugin-view-list-row:hover .plugin-view-list-row-menu, .plugin-view-list-row:focus-within .plugin-view-list-row-menu, .plugin-view-list-row-menu:focus-visible { opacity: 1; }
+.plugin-view-list-row-menu:hover { background: var(--notible-hover); color: var(--notible-accent); }
+@media (max-width: 720px) {
+  .plugin-view-list-header, .plugin-view-list-row { grid-template-columns: minmax(0, 1fr) 28px; }
+  .plugin-view-list-status-pill, .plugin-view-list-priority, .plugin-view-list-due { display: none; }
+}
+.plugin-view-row, .plugin-view-card { border: 1px solid var(--notible-border); border-radius: 8px; background: var(--notible-surface); color: var(--notible-text); text-align: left; cursor: pointer; font: inherit; }
+.plugin-view-row:hover, .plugin-view-card:hover { border-color: var(--notible-accent); }
+.plugin-view-row:focus-visible, .plugin-view-card:focus-visible { outline: 2px solid var(--notible-accent); outline-offset: 1px; }
+
+/* List row: title on the left, meta pushed to the right, excerpt on its own
+   line spanning the width. */
+.plugin-view-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; column-gap: 12px; row-gap: 4px; padding: 9px 12px; }
+.plugin-view-row .plugin-view-meta { justify-content: flex-end; }
+.plugin-view-row .plugin-view-excerpt { grid-column: 1 / -1; }
+
+/* Gallery card: stacked, height-capped so one long body can't tower over its
+   neighbours; excerpt clamped to two lines. */
+.plugin-view-card { display: flex; flex-direction: column; gap: 7px; padding: 12px 14px; max-height: 200px; overflow: hidden; }
+.plugin-view-card .plugin-view-excerpt { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+
+.plugin-view-row-main { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.plugin-view-row-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.plugin-view-card .plugin-view-row-title { white-space: normal; }
+.plugin-view-type-icon { flex: 0 0 auto; display: inline-flex; align-items: center; color: var(--notible-muted); }
+.plugin-view-excerpt { color: var(--notible-muted); font-size: 12px; }
+
+/* Shared status / priority / due / tags line. */
+.plugin-view-meta { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; font-size: 11px; color: var(--notible-muted); }
+.plugin-view-status { display: inline-flex; align-items: center; gap: 5px; color: var(--notible-text); }
+.plugin-view-status-dot { inline-size: 8px; block-size: 8px; border-radius: 50%; flex: 0 0 auto; }
+.plugin-view-meta-chip { padding: 1px 7px; border: 1px solid var(--notible-border); border-radius: 999px; }
+.plugin-view-tag { padding: 1px 8px; border-radius: 999px; font-size: 10px; font-weight: 600; color: var(--notible-on-accent); }
+.plugin-query-builder { margin: 12px 0; }
+.plugin-query-builder-header, .plugin-query-group-header, .plugin-query-footer { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.plugin-query-help { margin: 6px 0 12px; color: var(--notible-muted); font-size: 12px; }
+.plugin-query-group { display: grid; gap: 8px; padding: 10px; border: 1px solid var(--notible-border); border-radius: 8px; }
+.plugin-query-row { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
+.plugin-query-row select, .plugin-query-row input, .plugin-query-group-header select { min-height: 30px; border: 1px solid var(--notible-border); border-radius: 6px; padding: 5px 8px; background: var(--notible-surface); color: var(--notible-text); font: inherit; }
+.plugin-query-actions { display: flex; gap: 6px; }
+.plugin-query-actions button, .plugin-query-footer button { padding: 6px 9px; border-radius: 6px; color: var(--notible-muted); }
+.plugin-query-footer { justify-content: flex-end; margin-top: 12px; }
+/* Scoped to this surface on purpose: a bare `table {}` here used to restyle
+   every table in the whole application, plugin stylesheet or not. */
+.plugin-domain-view table { width: 100%; border-collapse: collapse; }
+.plugin-domain-view table th, .plugin-domain-view table td { border-bottom: 1px solid var(--notible-border); padding: 7px 9px; text-align: left; }
+.plugin-domain-view table select { box-sizing: border-box; height: 34px; border: 0; border-bottom: 1px solid var(--notible-border); border-radius: 0; padding: 4px 2px; background: transparent; color: var(--notible-text); font: inherit; }
+.plugin-domain-view table select:focus { outline: none; border-bottom-color: var(--notible-accent); }
+@media (max-width: 620px) { .plugin-view-toolbar { align-items: stretch; } .plugin-view-toolbar label { flex: 1 1 150px; } .plugin-query-row > * { flex: 1 1 100%; } }
+
+/* Right-click menu on Kanban cards (Feedback 27.08 pt 13). */
+.plugin-view-menu-backdrop { position: fixed; inset: 0; z-index: 49; }
+.plugin-view-menu { position: fixed; z-index: 50; display: grid; gap: 1px; min-width: 160px; max-width: 220px; padding: 6px; border: 1px solid var(--notible-border); border-radius: 9px; background: var(--notible-surface); box-shadow: 0 8px 24px rgba(0, 0, 0, .14); }
+.plugin-view-menu button { text-align: left; padding: 6px 8px; border: 0; border-radius: 6px; background: transparent; color: var(--notible-text); font: inherit; cursor: pointer; }
+.plugin-view-menu button:hover { background: var(--notible-hover); }
+.plugin-view-submenu { position: relative; }
+.plugin-view-submenu-trigger { display: flex; align-items: center; justify-content: space-between; width: 100%; gap: 12px; }
+.plugin-view-submenu[data-open] > .plugin-view-submenu-trigger, .plugin-view-submenu:hover > .plugin-view-submenu-trigger { background: var(--notible-hover); }
+.plugin-view-submenu-panel { position: absolute; left: 100%; top: -6px; margin-left: 3px; z-index: 51; display: grid; gap: 1px; min-width: 150px; max-width: 220px; max-height: 60vh; overflow-y: auto; padding: 6px; border: 1px solid var(--notible-border); border-radius: 9px; background: var(--notible-surface); box-shadow: 0 8px 24px rgba(0, 0, 0, .14); }
+.plugin-view-submenu-panel button { text-align: left; padding: 6px 8px; border: 0; border-radius: 6px; background: transparent; color: var(--notible-text); font: inherit; cursor: pointer; }
+.plugin-view-submenu-panel button:hover { background: var(--notible-hover); }
+
+/* Table grid (@tanstack/react-table) */
+.plugin-view-table-wrap { padding-top: 8px; }
+.plugin-view-table { border-collapse: collapse; table-layout: fixed; }
+.plugin-view-table th, .plugin-view-table td { border-bottom: 1px solid var(--notible-border); padding: 8px 10px; text-align: left; vertical-align: top; overflow: hidden; }
+.plugin-view-table td { font-size: 13px; }
+.plugin-view-table th { position: relative; user-select: none; background: var(--notible-hover); color: var(--notible-muted); font-size: 11px; text-transform: uppercase; letter-spacing: .02em; }
+.plugin-view-table tbody tr:hover td { background: var(--notible-hover); }
+.plugin-view-th-sort { all: unset; cursor: pointer; display: inline-flex; align-items: center; gap: 2px; font: inherit; font-weight: 600; color: var(--notible-text); }
+.plugin-view-col-resize { position: absolute; top: 0; right: 0; width: 6px; height: 100%; cursor: col-resize; touch-action: none; user-select: none; }
+.plugin-view-col-resize.is-resizing { background: var(--notible-selected); }
+.plugin-view-filter-row th { padding-top: 6px; padding-bottom: 8px; background: var(--notible-surface); border-bottom: 1px solid var(--notible-border); }
+.plugin-view-filter-input { box-sizing: border-box; inline-size: 100%; min-block-size: 30px; border: 1px solid var(--notible-border); border-radius: 6px; padding: 4px 7px; background: var(--notible-surface); color: var(--notible-text); font: inherit; font-size: 12px; }
+
+/* CSV import panel */
+.plugin-view-import { border: 1px solid var(--notible-border); border-radius: 10px; padding: 12px 14px; margin-top: 10px; display: grid; gap: 10px; background: var(--notible-surface); }
+.plugin-view-import-head { display: flex; align-items: center; justify-content: space-between; }
+.plugin-view-import-file, .plugin-view-import-type { display: grid; gap: 6px; font-size: 12px; color: var(--notible-muted); }
+.plugin-view-import-map { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 8px; max-height: 240px; overflow-y: auto; }
+.plugin-view-import-map label { display: grid; gap: 3px; font-size: 11px; color: var(--notible-muted); }
+.plugin-view-import-count { font-size: 12px; color: var(--notible-muted); margin: 0; }
+.plugin-view-import-error { font-size: 12px; color: var(--notible-danger); margin: 0; }
+.plugin-view-import-actions { display: flex; gap: 8px; justify-content: flex-end; }
+
+/* Kanban board: columns of small cards. Column chrome is neutral; only the
+   drop-target outline and the "high/urgent" priority chip use accent — every
+   other surface stays --notible-hover/--notible-border. */
+/* Fixed height: the board fits the window and each column
+   scrolls inside it, so the board's own horizontal scrollbar is always in view.
+   The natural-height board of 0.91.3 kept growing and pushed that bar off-screen. */
+.plugin-view-kanban { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(240px, 1fr); grid-template-rows: minmax(0, 1fr); gap: 12px; padding: 8px 0 12px; align-items: stretch; overflow-x: auto; overflow-y: hidden; height: max(420px, calc(100dvh - 220px)); }
+.plugin-view-kanban.is-panning { cursor: grabbing; user-select: none; }
+.plugin-view-kanban-col { min-height: 0; overflow-y: auto; padding: 12px; border-radius: 8px; background: var(--notible-hover); outline: 2px solid transparent; outline-offset: -2px; }
+.plugin-view-kanban-col.is-drop-target { outline-color: var(--notible-accent); }
+.plugin-view-kanban-head { display: flex; align-items: center; gap: 8px; color: var(--notible-text); font-size: 12px; font-weight: 650; text-transform: uppercase; letter-spacing: .04em; }
+.plugin-view-kanban-head > span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.plugin-view-kanban-count { padding: 1px 7px; border-radius: 999px; background: var(--notible-surface); color: var(--notible-muted); font-size: 11px; font-weight: 600; text-transform: none; letter-spacing: 0; }
+.plugin-view-kanban-head-actions { display: inline-flex; align-items: center; gap: 2px; margin-inline-start: auto; }
+.plugin-view-kanban-head-btn { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; border: 0; border-radius: 5px; background: transparent; color: var(--notible-muted); cursor: pointer; font: inherit; font-size: 13px; font-weight: 700; text-transform: none; letter-spacing: 0; line-height: 1; }
+.plugin-view-kanban-head-btn:hover { background: var(--notible-surface); color: var(--notible-accent); }
+.plugin-view-kanban-col.is-collapsed { min-height: 0; padding-bottom: 10px; }
+/* The column scrolls inside the fixed-height board; its title stays put. */
+.plugin-view-kanban-head { position: sticky; top: -12px; z-index: 1; margin: -12px -12px 0; padding: 12px; background: inherit; border-radius: 8px 8px 0 0; }
+.plugin-view-kanban-card { margin-top: 8px; display: grid; gap: 6px; padding: 9px 12px; border: 1px solid var(--notible-border); border-radius: 8px; background: var(--notible-surface); cursor: grab; user-select: none; touch-action: none; }
+.plugin-view-kanban-card-head { display: flex; align-items: center; gap: 7px; min-width: 0; }
+.plugin-view-kanban-card-title { color: var(--notible-text); overflow-wrap: anywhere; white-space: normal; line-height: 1.5; font-weight: 550; }
+.plugin-view-kanban-tags { display: flex; gap: 4px; flex-wrap: wrap; }
+.plugin-view-meta-chip.is-priority { border-color: transparent; background: color-mix(in srgb, var(--notible-danger) 24%, var(--notible-surface)); color: var(--notible-danger); }
+.plugin-view-kanban-ghost { position: fixed; width: 220px; box-shadow: 0 8px 20px rgba(0, 0, 0, 0.18); transform: rotate(2deg); pointer-events: none; z-index: 1000; }
+/* Soft pickup: the ghost is a freshly-mounted node every drag (React remounts
+   it when dragId flips from null), so a one-shot `animation` plays
+   automatically on grab with no JS timing — same safe pattern as
+   `core-view-in`. Position (left/top, set inline per pointermove) is
+   deliberately NOT transitioned — animating that would make the ghost lag
+   behind the cursor while dragging. Only the pickup pop (scale/rotate/shadow/
+   opacity) is animated, once, at the start. The origin card dims instead of
+   vanishing instantly (`.is-dragging`), so something visibly stays behind. */
+.plugin-view-kanban-card.is-dragging { opacity: 0.35; }
+@media (prefers-reduced-motion: no-preference) {
+  .plugin-view-kanban-card { transition: opacity 150ms ease; }
+  .plugin-view-kanban-ghost { animation: kanban-ghost-pickup 140ms ease-out; }
+}
+@keyframes kanban-ghost-pickup {
+  from { opacity: 0; transform: rotate(0deg) scale(0.93); box-shadow: 0 2px 6px rgba(0, 0, 0, 0.12); }
+  to { opacity: 1; transform: rotate(2deg) scale(1); box-shadow: 0 8px 20px rgba(0, 0, 0, 0.18); }
+}
+
+/* Calendar layout — a real month grid. */
+.plugin-view-cal { padding-top: 8px; }
+.plugin-view-cal-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.plugin-view-cal-head strong { min-width: 10ch; text-align: center; text-transform: capitalize; }
+.plugin-view-cal-head > button:last-child { margin-inline-start: auto; padding: 5px 10px; border: 1px solid var(--notible-border); border-radius: 7px; background: var(--notible-surface); color: var(--notible-text); cursor: pointer; font: inherit; font-size: 12px; }
+.plugin-view-cal-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); border: 1px solid var(--notible-border); border-radius: 8px; overflow: hidden; }
+.plugin-view-cal-weekday { padding: 6px 8px; background: var(--notible-hover); color: var(--notible-muted); font-size: 11px; text-transform: uppercase; letter-spacing: .02em; }
+.plugin-view-cal-cell { min-height: 92px; display: flex; flex-direction: column; gap: 3px; padding: 4px; border-top: 1px solid var(--notible-border); border-inline-start: 1px solid var(--notible-border); cursor: pointer; }
+.plugin-view-cal-cell:nth-child(7n + 1) { border-inline-start: 0; }
+.plugin-view-cal-cell.is-out { background: var(--notible-hover); }
+.plugin-view-cal-cell.is-out .plugin-view-cal-daynum { opacity: .45; }
+.plugin-view-cal-daynum { font-size: 11px; color: var(--notible-muted); padding: 1px 3px; }
+.plugin-view-cal-cell.is-today .plugin-view-cal-daynum { align-self: flex-start; border-radius: 999px; background: var(--notible-accent); color: var(--notible-on-accent); font-weight: 600; }
+.plugin-view-cal-chip { text-align: left; padding: 2px 6px; border: 1px solid var(--notible-border); border-inline-start: 3px solid var(--notible-border); border-radius: 4px; background: var(--notible-surface); color: var(--notible-text); font: inherit; font-size: 11px; line-height: 1.3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; }
+.plugin-view-cal-chip:hover { border-color: var(--notible-accent); }
+.plugin-view-cal-more { align-self: flex-start; padding: 1px 4px; border: 0; background: transparent; color: var(--notible-muted); font: inherit; font-size: 11px; cursor: pointer; }
+.plugin-view-cal-more:hover { color: var(--notible-accent); }
+.plugin-view-cal-undated { margin-top: 10px; }
+.plugin-view-cal-undated summary { color: var(--notible-muted); font-size: 12px; cursor: pointer; }
+.plugin-view-cal-undated .plugin-view-row { display: block; margin-top: 6px; }
+@media (max-width: 620px) { .plugin-view-cal-cell { min-height: 64px; } }
+
+/* Flat lists and softly separated board lanes from the reference screens. */
+.plugin-domain-view { container-type: inline-size; }
+.plugin-view-list-header { padding: 12px; font-size: 12px; text-transform: none; letter-spacing: 0; border-bottom: 1px solid var(--notible-border); }
+.plugin-view-list-group-head { padding: 12px 4px 8px; text-transform: none; letter-spacing: 0; font-size: 13px; }
+.plugin-view-kanban-head { text-transform: none; letter-spacing: 0; font-size: 13px; min-height: 28px; }
+.plugin-view-kanban-card { padding: 14px 12px; gap: 12px; border-color: var(--notible-border-subtle); }
+.plugin-view-kanban-card:hover { border-color: var(--notible-accent); }
+.plugin-view-kanban-col[data-kanban-col="in_progress"] { background: var(--notible-selected-soft); }
+.plugin-view-kanban-card .plugin-view-meta { gap: 8px; }
+.plugin-view-tabs { padding-top: 0; }
+.plugin-view-search { margin-inline-start: auto; }
+.plugin-view-row-title { font-weight: 550; }
+.plugin-view-excerpt { line-height: 1.5; }
+@container (max-width: 720px) {
+  .plugin-view-list-header, .plugin-view-list-row { grid-template-columns: minmax(0, 1fr) 100px 28px; gap: 8px; }
+  .plugin-view-list-header > :nth-child(2), .plugin-view-list-header > :nth-child(3),
+  .plugin-view-list-row > :nth-child(2), .plugin-view-list-row > :nth-child(3) { display: none; }
+  .plugin-view-list-due { display: block; }
+}
+
+.plugin-view-picker { display: inline-flex; min-width: 120px; }
+.plugin-view-more { position: relative; display: inline-flex; }
+.plugin-view-more-menu { position: absolute; top: calc(100% + 4px); right: 0; z-index: 20; display: grid; min-width: 150px; padding: 4px; border: 1px solid var(--notible-border); border-radius: 8px; background: var(--notible-surface); box-shadow: 0 10px 28px rgb(0 0 0 / 14%); }
+.plugin-view-toolbar .plugin-view-more-menu button { border: 0; background: transparent; text-align: left; padding: 6px 10px; border-radius: 6px; }
+.plugin-view-toolbar .plugin-view-more-menu button:hover { background: var(--notible-hover); }
+/* The table scrolls sideways inside itself with a visible bar, and the first column (Title)
+   stays put while it does (V-SURFACES-02). */
+.plugin-view-table-wrap { scrollbar-width: thin; scrollbar-gutter: stable; padding-bottom: 6px; }
+.plugin-view-table th:first-child, .plugin-view-table td:first-child { position: sticky; left: 0; z-index: 1; background: var(--notible-surface); box-shadow: 1px 0 0 var(--notible-border); }
+.plugin-view-table th:first-child { z-index: 2; background: color-mix(in srgb, var(--notible-hover) 100%, var(--notible-surface)); }
+/* One text size across the view toolbar and its tabs: the type picker, Sort and "+ New view" were
+   16 px beside 12–13 px buttons (visual check, 02.10). */
+.plugin-view-toolbar, .plugin-view-tabs { font-size: 13px; }
+.plugin-view-more > button { padding: 6px 11px; border: 1px solid var(--notible-border); border-radius: 7px; background: var(--notible-surface); color: var(--notible-text); cursor: pointer; font: inherit; font-size: 12px; }
+.plugin-view-more > button:hover, .plugin-view-more > button.active { background: var(--notible-hover); }
+
+/* The table scrolls inside its own box: the box is as wide as the view, never as wide as the table,
+   so the scrollbar appears instead of the columns being cut off (V-RESURFACES-01). */
+.plugin-domain-view, .plugin-view-content-fade { min-width: 0; max-width: 100%; }
+.plugin-view-table-wrap { display: block; width: 100%; max-width: 100%; overflow-x: auto; }
+
+/* R4 T1, corrected in 0.94.1: columns share the width (all equal, at least 260 px); only a board with
+   more columns than fit scrolls sideways. A fixed 272 px left half the screen empty on a 4-column board. */
+.plugin-view-kanban { grid-auto-columns: minmax(260px, 1fr); }
+/* T4: finished work reads as finished; the menu's flyouts open left near the window's right edge. */
+.plugin-view-kanban-card.is-finished, .plugin-view-list-row.is-finished { opacity: .62; }
+.plugin-view-kanban-card.is-finished .plugin-view-kanban-card-title, .plugin-view-list-row.is-finished .plugin-view-row-title { text-decoration: line-through; text-decoration-color: color-mix(in srgb, currentColor 45%, transparent); }
+.plugin-view-menu.flips-left .plugin-view-submenu-panel { left: auto; right: 100%; margin-left: 0; margin-right: 3px; }
+.plugin-view-menu > button, .plugin-view-submenu-panel > button { text-align: start; }
+.plugin-view-submenu-panel > button[aria-checked="true"] { font-weight: 600; color: var(--notible-accent); }
+.plugin-view-menu > button.is-danger { color: var(--notible-danger); }
+.plugin-view-due-panel { min-width: 220px; }
+.plugin-view-rename { width: 100%; min-width: 0; font: inherit; font-weight: 600; padding: 2px 6px; border: 1px solid var(--notible-accent); border-radius: 6px; background: var(--notible-surface); color: var(--notible-text); }
+
+/* T3: quick add. Title first and widest, the optional fields beside it, the actions on their own row. */
+.plugin-view-create-form > .plugin-view-create-title { flex: 2 1 320px; }
+.plugin-view-create-form > .plugin-view-create-content { flex: 1 1 100%; }
+.plugin-view-create-actions { display: flex; flex: 1 1 100%; gap: 8px; align-items: center; }
+.plugin-view-create-actions > button:not(.btn-primary) { border: 1px solid var(--notible-border); border-radius: 8px; padding: 8px 12px; background: transparent; color: var(--notible-text); font: inherit; cursor: pointer; }
+.plugin-view-create-actions > button:not(.btn-primary):hover { background: var(--notible-hover); }
+
+/* T7: rows line up: every cell centred on one line height. */
+.plugin-view-table td { vertical-align: middle; }
+.plugin-view-table td .nb-control-trigger, .plugin-view-table td input { min-height: 30px; }
+/* T5: a picker with its label on the left, like Sort. */
+.plugin-view-labelled { display: inline-flex; align-items: center; gap: 6px; }
+/* T8: a tab's × shows on hover or keyboard focus only; Undo after a delete. */
+.plugin-view-tab .plugin-view-tab-delete { opacity: 0; transition: opacity 120ms ease; }
+.plugin-view-tab:hover .plugin-view-tab-delete, .plugin-view-tab:focus-within .plugin-view-tab-delete { opacity: 1; }
+.plugin-view-undo { display: flex; align-items: center; gap: 10px; padding: 6px 0; color: var(--notible-muted); font-size: 13px; }
+.plugin-view-undo button { border: 0; background: transparent; color: var(--notible-accent); font: inherit; font-weight: 600; cursor: pointer; padding: 2px 4px; }
+
+/* T9: today is marked; a day under a dragged task shows where it will land; the new-task box sits in the day. */
+.plugin-view-cal-today { display: inline-grid; place-items: center; min-width: 22px; height: 22px; padding: 0 4px; border: 1px solid var(--notible-accent); border-radius: 999px; color: var(--notible-accent); font-weight: 700; }
+.plugin-view-cal-cell { cursor: default; }
+.plugin-view-cal-cell.is-drop-target { outline: 2px solid var(--notible-accent); outline-offset: -2px; }
+.plugin-view-cal-chip { touch-action: none; cursor: grab; }
+.plugin-view-cal-chip.is-dragging { opacity: .4; }
+.plugin-view-cal-new { width: 100%; min-width: 0; box-sizing: border-box; padding: 3px 6px; border: 1px solid var(--notible-accent); border-radius: 6px; background: var(--notible-surface); color: var(--notible-text); font: inherit; font-size: 12px; }

@@ -1,0 +1,44 @@
+node_modules/
+dist/
+dist-core/
+dist-plugin-test/
+dist-test-host/
+src-tauri/target/
+src-tauri/target-*/
+# Everything under release/ is build output and lives in R2. The plugin-market
+# catalog moved to its own public repo (github.com/prejas3/notible-market); this
+# repo no longer carries it.
+release/
+*.log
+.claude/
+.superpowers/
+
+# Local secrets — templates are committed as *.example
+.env
+.cargo/config.toml
+
+# Local tooling, agent and scratch files (not part of the public repo)
+.vs/
+Piaskownica/
+.agents/
+.hive/
+output/
+skills-lock.json
+CLAUDE.md
+AGENTS.md
+Notible.bat
+zoom.js
+
+# Bundled Node runtime: fetched by `npm run setup:node-runtime` (hash-pinned)
+mcp-server/runtime/node.exe
+
+# Internal planning, audit and release-checklist docs
+docs/superpowers/
+docs/releases/
+docs/audits/
+docs/reviews/
+docs/STATUS_*
+docs/PLAN_*
+docs/AUDYT_*
+docs/*HANDOFF*
+docs/graph-concepts.html

@@ -1,0 +1,20 @@
+{
+  "id": "notible.sync.simple",
+  "name": "Notible Sync Simple",
+  "version": "0.5.10",
+  "apiVersion": "1.26",
+  "minCoreVersion": "0.95.0",
+  "description": "Keep this workspace the same on your own computers through Google Drive, without pairing them. The key is kept on your Drive, so anyone who can sign in to that Google account can read the workspace.",
+  "author": "Notible",
+  "entry": "main.js",
+  "permissions": [
+    "data.sync",
+    "data.read",
+    "workspace.ui",
+    "network"
+  ],
+  "locales": {
+    "pl": "locales/pl.json"
+  },
+  "guide": "Open **Settings → Plugins → Notible Sync Simple** and sign in with Google on each computer — that is all.\n\nIt is simpler than **Notible Sync** because the encryption key is stored on your Drive. If you want the key to stay only on your own computers, use Notible Sync instead.\n\nSync runs in the background; **Simple Sync: sync now** in Hotkeys runs it at once."
+}

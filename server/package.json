@@ -1,0 +1,21 @@
+{
+  "name": "notible-ai-backend",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.68.0",
+    "hono": "^4.9.0",
+    "openai": "^6.9.0"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20260801.1",
+    "typescript": "~5.8.3",
+    "wrangler": "^4.0.0"
+  }
+}

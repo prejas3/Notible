@@ -1,0 +1,362 @@
+/**
+ * Runnable check for the parts of Notible Sync that can be wrong silently:
+ * the key encoding, the sealed-snapshot round trip, and the validator that
+ * stands between a peer's file and the database.
+ *
+ * node plugins/notible-sync/self-check.mjs
+ */
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import plugin, { Sync, SharedFolder, encodeKey, decodeKey, seal, unseal, safeParse, validateSnapshot, planApply, gunzip, mediaNamesIn, mediaNamesOf, mergeTableProps, mergeEmbeddedTables, nextBases, planConflicts, objectHash, pluralText, CHANGES_IN, MERGED, EDITED_BOTH, HELD_BACK } from "./main.js";
+// SYNC-MERGE-A (Hive #5): main.js carries a copy of plugins/shared/sync-merge.js.
+import { inlinedBlock, sourceBlock } from "../../scripts/sync-merge-inline.mjs";
+import { checkNotices } from "../shared/sync-notice.check.mjs";
+import { checkSharedFolder } from "../shared/sync-transport.check.mjs";
+assert.equal(
+  inlinedBlock(readFileSync(new URL("./main.js", import.meta.url), "utf8").replace(/\r\n/g, "\n")),
+  sourceBlock(),
+  "main.js is out of date: run node scripts/sync-merge-inline.mjs",
+);
+await import("../shared/sync-merge.check.mjs");
+
+// --- identity
+// Core loads plugin.json, shows it to the user, then refuses the entry module
+// if it claims to be something else. Forgetting `manifest` on the export
+// altogether fails with "Cannot read properties of undefined (reading 'id')",
+// which says nothing about the cause — so assert it here instead.
+const declared = JSON.parse(readFileSync(new URL("./plugin.json", import.meta.url), "utf8"));
+assert.ok(plugin.manifest, "the entry module must export a manifest, not just onload");
+for (const field of ["id", "name", "version", "apiVersion", "description", "author"]) {
+  assert.equal(plugin.manifest[field], declared[field], `${field} must match plugin.json`);
+}
+assert.deepEqual(plugin.manifest.permissions, declared.permissions);
+assert.equal(typeof plugin.onload, "function");
+assert.equal(typeof plugin.onunload, "function");
+
+const object = (over = {}) => ({
+  id: "a", type: "note", title: "T", content: "{}", props: "{}",
+  created_at: 1, updated_at: 2, archived_at: null, trashed_at: null, parent_id: null, ...over,
+});
+const snapshot = (over = {}) => ({
+  v: 1, deviceId: "dev-1", writtenAt: 1,
+  objects: [object()], relations: [], tombstones: [], relationTombstones: [], ...over,
+});
+const types = new Set(["note", "project"]);
+
+// --- key encoding
+const raw = crypto.getRandomValues(new Uint8Array(32));
+assert.deepEqual([...decodeKey(encodeKey(raw))], [...raw], "key must survive a round trip");
+// A key read off one screen and typed into another: lower case, lost dashes,
+// and the four letters Crockford maps onto digits.
+const typed = encodeKey(raw).toLowerCase().replace(/-/g, "");
+assert.deepEqual([...decodeKey(typed)], [...raw], "casing and dashes must not matter");
+assert.throws(() => decodeKey("TOO-SHORT"), /32 bytes/, "a truncated key must be refused, not padded");
+
+// --- sealed round trip
+const key = crypto.getRandomValues(new Uint8Array(32));
+const sealed = await seal(key, snapshot());
+assert.deepEqual(await unseal(key, sealed), snapshot(), "a snapshot must survive seal/unseal");
+assert.ok(!new TextDecoder().decode(sealed).includes("dev-1"), "the device id must not be readable in the ciphertext");
+
+// The whole peer-authentication story rests on these two.
+await assert.rejects(
+  unseal(crypto.getRandomValues(new Uint8Array(32)), sealed),
+  /not written by a paired device/,
+  "a snapshot sealed under another key must be refused",
+);
+const tampered = Uint8Array.from(sealed);
+tampered[tampered.length - 1] ^= 1;
+await assert.rejects(unseal(key, tampered), /not written by a paired device/, "a flipped bit must be refused");
+
+// --- dangerous keys are stripped
+// Asserting on Object.prototype here would pass with a plain JSON.parse too,
+// which makes it a test of nothing. What safeParse actually guarantees is
+// that the keys never appear in the parsed value at all.
+const source = '{"a":1,"__proto__":{"owned":true},"constructor":{"x":1},"prototype":{"y":1}}';
+const cleaned = safeParse(source);
+assert.equal(cleaned.a, 1);
+for (const badKey of ["__proto__", "constructor", "prototype"]) {
+  assert.ok(!Object.hasOwn(cleaned, badKey), `safeParse must drop ${badKey}`);
+}
+assert.ok(Object.hasOwn(JSON.parse(source), "__proto__"), "the plain parser keeps it — that is why safeParse exists");
+// And a merge of the cleaned value cannot move a prototype anywhere.
+const target = {};
+Object.assign(target, cleaned);
+assert.equal(Object.getPrototypeOf(target), Object.prototype, "merging a cleaned peer value must not reparent the target");
+
+// --- validation
+const clean = validateSnapshot(snapshot(), types);
+assert.equal(clean.objects.length, 1);
+assert.equal(clean.rejected.length, 0);
+
+assert.throws(() => validateSnapshot(snapshot({ v: 2 }), types), /different version/);
+assert.throws(() => validateSnapshot({ ...snapshot(), deviceId: "" }, types), /no device id/);
+
+const mixed = validateSnapshot(snapshot({
+  objects: [
+    object({ id: "ok" }),
+    object({ id: "weird", type: "notible.evil" }),
+    object({ id: "nocontent", content: 42 }),
+    object({ id: "huge", title: "x".repeat(5000) }),
+    object({ id: "nostamp", updated_at: "yesterday" }),
+    { nonsense: true },
+  ],
+}), types);
+assert.deepEqual(mixed.objects.map((item) => item.id), ["ok"], "only the clean object may pass");
+assert.equal(mixed.rejected.length, 5, "every dropped object must be reported, not swallowed");
+assert.ok(mixed.rejected.some((line) => line.includes("unknown type")));
+
+// Malformed relations and tombstones are dropped, never passed through: a
+// tombstone with a bad timestamp reaching sync_apply would delete an object.
+const junk = validateSnapshot(snapshot({
+  relations: [{ from_id: "a", to_id: "b", kind: "in", created_at: 1 }, { from_id: "a" }],
+  tombstones: [{ object_id: "x", deleted_at: 5 }, { object_id: "y" }, { deleted_at: 1 }],
+  relationTombstones: [{ from_id: "a", to_id: "b", kind: "in", deleted_at: 3 }, {}],
+}), types);
+assert.equal(junk.relations.length, 1);
+assert.equal(junk.tombstones.length, 1);
+assert.equal(junk.relationTombstones.length, 1);
+
+// --- the hardening that stands between a peer and an unrecoverable wipe.
+// A tombstone erases the object AND its history and bars the id from ever
+// being written again (db.rs), and it wins whenever `deleted_at` outranks the
+// local `updated_at` — so a far-future or fractional stamp is a workspace
+// wipe with no undo. Both used to pass: the check was `Number.isFinite`.
+const farFuture = Date.UTC(9999, 0, 1);
+// Inside the fixed ceiling and still a life sentence: a 2199 tombstone beats
+// every edit this machine will ever make. Only "not from the future" catches it.
+const justUnderTheCeiling = Date.UTC(2199, 0, 1);
+const wipe = validateSnapshot(snapshot({
+  tombstones: [
+    { object_id: "doomsday", deleted_at: farFuture },
+    { object_id: "ceiling", deleted_at: justUnderTheCeiling },
+    { object_id: "float", deleted_at: 1.5 },
+    { object_id: "negative", deleted_at: -1 },
+    { object_id: "fine", deleted_at: 5 },
+  ],
+}), types);
+assert.deepEqual(wipe.tombstones.map((item) => item.object_id), ["fine"],
+  "only a tombstone with a plausible epoch-millisecond stamp may pass");
+// Tomorrow is fine — two machines never agree on the clock to the second.
+assert.equal(
+  validateSnapshot(snapshot({ tombstones: [{ object_id: "skew", deleted_at: Date.now() + 60_000 }] }), types).tombstones.length,
+  1, "a stamp a minute ahead is clock skew, not an attack");
+
+// Same stamps on an object: year 9999 makes the row unbeatable by any local
+// edit, and 1.5 is cast outside the error path in Rust and kills sync for good.
+const stamps = validateSnapshot(snapshot({
+  objects: [
+    object({ id: "future", updated_at: farFuture }),
+    object({ id: "fractional", updated_at: 1.5 }),
+    object({ id: "ok" }),
+  ],
+}), types);
+assert.deepEqual(stamps.objects.map((item) => item.id), ["ok"]);
+assert.ok(stamps.rejected.every((line) => line.includes("bad timestamps")));
+assert.equal(
+  validateSnapshot(snapshot({ objects: [object({ archived_at: 1.5 })] }), types).objects.length, 0,
+  "a nullable marker must be held to the same range",
+);
+
+// Every list is capped, the destructive one included.
+const many = (count) => Array.from({ length: count }, (_, index) => ({ object_id: `x${index}`, deleted_at: 1 }));
+assert.throws(() => validateSnapshot(snapshot({ tombstones: many(200_001) }), types), /refusing to apply/);
+assert.doesNotThrow(() => validateSnapshot(snapshot({ tombstones: many(10) }), types));
+
+// A decompression bomb has to die before the validator ever sees it: unseal
+// inflates first, and gzip turns megabytes of zeros into a few kilobytes.
+// Tested against a small explicit limit — the real one is 512 MB, which no
+// test should allocate to prove the loop stops.
+const zeros = new Uint8Array(1024 * 1024);
+const squashed = new Uint8Array(await new Response(
+  new Blob([zeros]).stream().pipeThrough(new CompressionStream("gzip")),
+).arrayBuffer());
+assert.ok(squashed.length < zeros.length / 100, "the fixture must actually be a bomb");
+await assert.rejects(gunzip(squashed, 4096), /size limit/, "inflating past the limit must stop, not finish");
+assert.equal((await gunzip(squashed)).length, zeros.length, "a payload under the limit still inflates whole");
+
+// --- media names out of note content
+// Names are how a note and its pictures agree on what a picture is called;
+// getting this wrong means either missing images or asking Drive for files
+// that do not exist.
+const IMG = "1f2e3d4c-5b6a-4978-8899-aabbccddeeff.png";
+assert.deepEqual(mediaNamesIn(`![](media/${IMG})`), [IMG]);
+assert.deepEqual(mediaNamesIn(`<img src="media/${IMG}">`), [IMG]);
+assert.deepEqual(mediaNamesIn(`two ![](media/${IMG}) and ![](media/${IMG})`), [IMG, IMG]);
+assert.deepEqual(mediaNamesIn("no pictures"), []);
+assert.deepEqual(mediaNamesIn(null), [], "content is not always a string");
+// Pre-migration content and other people's servers are not our files.
+assert.deepEqual(mediaNamesIn(`![](C:/Users/me/media/${IMG})`), [IMG],
+  "a path ending in media/<uuid> still names our file");
+assert.deepEqual(mediaNamesIn(`![](media/${IMG.replace(".png", ".exe")})`), [],
+  "only extensions Core actually writes");
+
+// The set is taken from the WHOLE local workspace, never from the objects a
+// cycle happened to apply: a failed download leaves the object in the
+// database, so a delta-based list would never mention its picture again.
+const other = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee.webp";
+assert.deepEqual(
+  mediaNamesOf([
+    { content: `![](media/${IMG})`, props: "{}" },
+    { content: "plain", props: `{"cover":"media/${other}"}` },
+    { content: `![](media/${IMG})`, props: "{}" },
+  ]).sort(),
+  [IMG, other].sort(),
+  "props count too, and duplicates collapse",
+);
+assert.deepEqual(mediaNamesOf([]), []);
+assert.deepEqual(mediaNamesOf(undefined), []);
+
+// --- open-note deferral
+const two = validateSnapshot(snapshot({ objects: [object({ id: "open" }), object({ id: "other" })] }), types);
+const planned = planApply(two, "open");
+assert.deepEqual(planned.apply.objects.map((item) => item.id), ["other"], "the open note must not be written under the caret");
+assert.deepEqual(planned.deferred.map((item) => item.id), ["open"]);
+assert.equal(planApply(two, null).deferred.length, 0, "nothing is deferred when no note is open");
+assert.equal(planApply(two, "unrelated").apply.objects.length, 2);
+
+// --- conflicts: a table merges cell by cell; anything else keeps the newer
+// version and the device whose own version lost saves it as a copy.
+{
+  const props = (columns, rows) => JSON.stringify({ columns, rows });
+  const base = props([{ id: "c1", name: "A", type: "text" }], [{ id: "r1", cells: { c1: "a" } }, { id: "r2", cells: { c1: "b" } }]);
+  const mine = props([{ id: "c1", name: "A", type: "text" }, { id: "c2", name: "B", type: "text" }], [{ id: "r1", cells: { c1: "a", c2: "x" } }, { id: "r2", cells: { c1: "b", c2: "" } }]);
+  const theirs = props([{ id: "c1", name: "A", type: "text" }], [{ id: "r1", cells: { c1: "a" } }, { id: "r2", cells: { c1: "edited" } }]);
+  const clean = mergeTableProps(base, mine, theirs, false);
+  const out = JSON.parse(clean.props);
+  assert.deepEqual(out.columns.map((c) => c.id), ["c1", "c2"], "a column added on one side survives");
+  assert.equal(out.rows[0].cells.c2, "x");
+  assert.equal(out.rows[1].cells.c1, "edited", "a cell edited on the other side survives");
+  assert.equal(clean.conflicts, 0);
+  assert.equal(mergeTableProps(base, mine, theirs, true).props, clean.props, "both devices merge to the same bytes");
+  assert.equal(mergeTableProps(base, theirs, mine, true).props, clean.props, "swapping local and remote gives the same bytes");
+
+  const clash = mergeTableProps(base, props([{ id: "c1", name: "A", type: "text" }], [{ id: "r1", cells: { c1: "mine" } }, { id: "r2", cells: { c1: "b" } }]), props([{ id: "c1", name: "A", type: "text" }], [{ id: "r1", cells: { c1: "theirs" } }, { id: "r2", cells: { c1: "b" } }]), false);
+  assert.equal(JSON.parse(clash.props).rows[0].cells.c1, "theirs", "same cell on both: newer wins");
+  assert.equal(clash.localLost, true, "and this device owes a copy");
+  assert.equal(mergeTableProps(base, "not json", theirs, true), null, "unreadable table falls back to a copy");
+
+  const note = (content, updated_at) => ({ id: "n", type: "note", title: "N", content, props: "{}", created_at: 1, updated_at, archived_at: null, trashed_at: null, parent_id: null });
+  const bases = { n: objectHash(note("old", 1)) };
+  const lost = planConflicts([note("theirs", 3)], new Map([["n", note("mine", 2)]]), bases, {}, "Home");
+  assert.equal(lost.conflicts, 1);
+  assert.equal(lost.objects.length, 2, "remote applied + a copy of ours");
+  assert.equal(lost.objects[1].content, "mine");
+  assert.notEqual(lost.objects[1].id, "n");
+  const won = planConflicts([note("theirs", 2)], new Map([["n", note("mine", 3)]]), bases, {}, "Home");
+  assert.equal(won.objects.length, 0, "ours is newer: nothing applied, no copy (the other side copies)");
+  assert.equal(planConflicts([note("theirs", 3)], new Map([["n", note("old", 1)]]), bases, {}, "Home").conflicts, 0, "one-sided edit is no conflict");
+  assert.equal(planConflicts([note("theirs", 3)], new Map([["n", note("mine", 2)]]), {}, {}, "Home").objects.length, 2, "no base yet (Hive #14, F3): unknown history, the older row is kept as a copy");
+  const trashOnly = planConflicts([{ ...note("mine", 3), trashed_at: 3 }], new Map([["n", note("mine", 2)]]), bases, {}, "Home");
+  assert.equal(trashOnly.objects.length, 1, "trash-only difference with stale base must not duplicate");
+  assert.equal(trashOnly.objects[0].trashed_at, 3);
+  const trashEdit = planConflicts([{ ...note("theirs", 3), trashed_at: 3 }], new Map([["n", note("mine", 2)]]), bases, {}, "Home");
+  assert.equal(trashEdit.objects.length, 2, "preserve genuine losing edits");
+  assert.equal(trashEdit.objects[1].content, "mine");
+  assert.equal(trashEdit.objects[1].trashed_at, 3, "preserve losing edits inside trash");
+  const localTrash = planConflicts([note("theirs", 3)], new Map([["n", { ...note("mine", 2), trashed_at: 2 }]]), bases, {}, "Home");
+  // Hive #14 (F4): a trashed version with its own edit is kept, as a copy in the trash.
+  assert.equal(localTrash.objects.length, 2);
+  assert.equal(localTrash.objects[1].content, "mine");
+  assert.equal(localTrash.objects[1].trashed_at, 2);
+  assert.ok(localTrash.notes[0].includes("saved as a conflict copy in trash"));
+  const tableMine = { ...note("", 2), type: "table", props: mine };
+  const tableTrash = { ...note("", 3), type: "table", props: theirs, trashed_at: 3 };
+  const trashTable = planConflicts([tableTrash], new Map([["n", tableMine]]), { n: objectHash({ ...tableMine, props: base }) }, { n: base }, "Home");
+  assert.equal(trashTable.objects[0].props, theirs, "do not merge a trashed table");
+  assert.ok(trashTable.objects.every((item) => item.trashed_at === 3));
+
+  // E14B-SYNC-FENCE (Hive #2): a table embedded in a note merges cell by cell.
+  const doc = (lines) => JSON.stringify({ type: "doc", content: lines.map((text) => (text ? { type: "paragraph", content: [{ type: "text", text }] } : { type: "paragraph" })) });
+  const fence = (a, b) => ["```notible-table", '{"v":1,"columns":[{"id":"c1","name":"A","type":"text"}]}', `{"id":"r1","cells":{"c1":"${a}"}}`, `{"id":"r2","cells":{"c1":"${b}"}}`, "```"];
+  const baseBody = doc(["Intro", "", ...fence("a", "b"), "after"]);
+  const embedMerged = mergeEmbeddedTables(baseBody, doc(["Intro", "", ...fence("mine", "b"), "after"]), doc(["Intro", "", ...fence("a", "theirs"), "after"]), true);
+  assert.equal(embedMerged.content, doc(["Intro", "", ...fence("mine", "theirs"), "after"]), "different cells of an embedded table merge, text around it untouched");
+  assert.equal(embedMerged.conflicts, 0);
+  assert.equal(mergeEmbeddedTables(baseBody, doc(["Changed", "", ...fence("mine", "b"), "after"]), doc(["Intro", "", ...fence("a", "theirs"), "after"]), true), null, "text around it differs: conflict copy");
+  assert.equal(mergeEmbeddedTables(baseBody, doc(["Intro", "", ...fence("mine", "b"), "after", ...fence("x", "y")]), doc(["Intro", "", ...fence("a", "theirs"), "after"]), true), null, "a block added on one side: conflict copy");
+  assert.equal(mergeEmbeddedTables(doc(["plain"]), doc(["mine"]), doc(["theirs"]), true), null, "no embedded table: not this merge");
+  const marked = JSON.stringify({ type: "doc", content: [{ type: "paragraph", content: [{ type: "text", text: "Intro", marks: [{ type: "bold" }] }] }] });
+  assert.equal(mergeEmbeddedTables(baseBody, marked, baseBody, true), null, "rich (marked) content is never rebuilt");
+  const clashEmbed = mergeEmbeddedTables(baseBody, doc(["Intro", "", ...fence("mine", "b"), "after"]), doc(["Intro", "", ...fence("theirs", "b"), "after"]), false);
+  assert.equal(clashEmbed.localLost, true, "same cell on both: this device owes a copy");
+  const embedPlan = planConflicts([note(doc(["Intro", "", ...fence("a", "theirs"), "after"]), 3)], new Map([["n", note(doc(["Intro", "", ...fence("mine", "b"), "after"]), 2)]]), { n: objectHash(note(baseBody, 1)) }, { n: baseBody }, "Home");
+  assert.equal(embedPlan.objects.length, 1, "merged in place, no conflict copy");
+  assert.ok(embedPlan.objects[0].content.includes("mine") && embedPlan.objects[0].content.includes("theirs"));
+  assert.ok(embedPlan.objects[0].updated_at > 3, "newer than both, so it wins everywhere");
+  const embedBases = nextBases([note(baseBody, 1), { ...note(doc(["plain"]), 1), id: "p" }], {}, {}, new Set());
+  assert.equal(embedBases.tables.n, baseBody, "a note with an embedded table keeps its content as the base");
+  assert.equal(embedBases.tables.p, undefined, "a plain note does not");
+  // Automations logs a check into the project on each device on its own; that alone is not an edit.
+  const project = (log, updated_at) => ({ ...note("same", updated_at), props: JSON.stringify({ status: "open", _automationLog: log }) });
+  const logBases = { n: objectHash(project([{ id: "base" }], 1)) };
+  const logOnly = planConflicts([project([{ id: "theirs" }], 3)], new Map([["n", project([{ id: "mine" }], 2)]]), logBases, {}, "Home");
+  assert.equal(logOnly.conflicts, 0, "a run log written on both devices is no conflict");
+  assert.equal(logOnly.objects.length, 1, "no conflict copy for a run log");
+}
+
+// SYNC-MERGE-A (Hive #5): run() goes through the shared lineage path.
+{
+  const src = readFileSync(new URL("./main.js", import.meta.url), "utf8");
+  const run = src.slice(src.indexOf("  async run() {"), src.indexOf("\n  }\n", src.indexOf("  async run() {")));
+  for (const call of ["openLineage(", "readLineage(", "pullPeer(", "pushLineage("]) assert.ok(run.includes(call), `run() must call ${call}`);
+  assert.ok(!run.includes("planConflicts("), "run() no longer calls planConflicts directly");
+  const manifest = JSON.parse(readFileSync(new URL("./plugin.json", import.meta.url), "utf8"));
+  assert.equal(manifest.apiVersion, "1.26");
+  assert.equal(manifest.minCoreVersion, "0.95.0");
+  assert.match(src, /apiVersion: "1\.26"/);
+  const forget = src.slice(src.indexOf("  async forgetLineage() {"), src.indexOf("\n  }\n", src.indexOf("  async forgetLineage() {")));
+  assert.ok(forget.includes("resetLineage(this.context.store)") && forget.includes("markReseed("), "forgetLineage wipes and marks a re-seed");
+  assert.ok(forget.includes("await this.running"), "forgetLineage waits for the in-flight run");
+  assert.ok(!run.includes("forgetLineage("), "run() must never call forgetLineage (deadlock)");
+  assert.ok((src.match(/forgetLineage\(\)/g) ?? []).length - 1 >= 3, "forgetLineage call sites (sign-out, re-pair)");
+}
+
+// SYNC-NOTICE (Hive #11): one grouped notice per cycle; the setting turns it off.
+await checkNotices(Sync, "notible.sync", new URL("./", import.meta.url));
+await checkSharedFolder(SharedFolder);
+
+// I18N (Hive #56): the summary line's plural. English one/other; Polish one / few / other;
+// a locale with no translation, or an old Core whose t returns the key, shows English.
+{
+  const strings = JSON.parse(readFileSync(new URL("./locales/pl.json", import.meta.url), "utf8")).strings;
+  const translate = (language) => (key, values) => {
+    const text = language === "pl" && strings[key] !== undefined ? strings[key] : key;
+    return values ? text.replace(/\{(\w+)\}/g, (whole, name) => (name in values ? String(values[name]) : whole)) : text;
+  };
+  const show = (text, count) => text.replace("{count}", String(count));
+  for (const count of [1, 2, 5, 22]) {
+    assert.equal(pluralText(translate("en"), CHANGES_IN, count, "en", { count }), show(count === 1 ? "{count} change in" : "{count} changes in", count), `English for ${count}`);
+    assert.equal(pluralText(translate("pl"), CHANGES_IN, count, "pl", { count }), show(count === 1 ? "{count} zmiana otrzymana" : count === 5 ? "{count} zmian otrzymanych" : "{count} zmiany otrzymane", count), `Polish for ${count}`);
+  }
+  // Number-first, same verbs as Sync Simple. The neighbours get "#one" / "#few" too.
+  for (const [forms, name, one, few, other] of [
+    [MERGED, "merged", "{count} notatka scalona", "{count} notatki scalone", "{count} notatek scalonych"],
+    [EDITED_BOTH, "edited", "{count} notatka edytowana na obu urządzeniach", "{count} notatki edytowane na obu urządzeniach", "{count} notatek edytowanych na obu urządzeniach"],
+    [HELD_BACK, "held back", "{count} zmiana wstrzymana (notatka jest otwarta)", "{count} zmiany wstrzymane (notatka jest otwarta)", "{count} zmian wstrzymanych (notatka jest otwarta)"],
+  ]) {
+    for (const count of [1, 2, 5]) {
+      const want = count === 1 ? one : count === 2 ? few : other;
+      assert.equal(pluralText(translate("pl"), forms, count, "pl", { count }), show(want, count), `Polish ${name} for ${count}`);
+      assert.equal(pluralText(translate("en"), forms, count, "en", { count }), show(name === "merged" ? "{count} merged" : name === "edited" ? "{count} edited on both devices" : "{count} held back (note is open)", count), `English ${name} for ${count}`);
+    }
+  }
+  assert.equal(pluralText(translate("cs"), CHANGES_IN, 2, "cs", { count: 2 }), show("{count} changes in", 2), "a locale with no translation shows English");
+  assert.equal(pluralText(translate("en"), CHANGES_IN, 2, "pl", { count: 2 }), show("{count} changes in", 2), "an old Core (t returns the key) shows English");
+}
+
+// I18N (Hive #56): the merge notes count cells in English, inline (not via t()).
+{
+  const table = (id, props, updated_at) => ({ id, type: "table", title: "T", content: "", props, created_at: 1, updated_at, archived_at: null, trashed_at: null, parent_id: null });
+  const cols = [{ id: "c1", name: "A", type: "text" }, { id: "c2", name: "B", type: "text" }];
+  const rowsWith = (cells) => JSON.stringify({ columns: cols, rows: [{ id: "r1", cells }] });
+  const base = rowsWith({ c1: "a", c2: "b" });
+  for (const [n, word] of [[1, "1 cell changed on both"], [2, "2 cells changed on both"]]) {
+    const mine = Object.fromEntries(["c1", "c2"].map((c, i) => [c, i < n ? "L" : { c1: "a", c2: "b" }[c]]));
+    const theirs = Object.fromEntries(["c1", "c2"].map((c, i) => [c, i < n ? "R" : { c1: "a", c2: "b" }[c]]));
+    const out = planConflicts([table("t", rowsWith(theirs), 3)], new Map([["t", table("t", rowsWith(mine), 2)]]), {}, { t: base }, "Home");
+    assert.ok(out.notes[0].includes(word), `cell wording for ${n}: ${out.notes[0]}`);
+  }
+}
+
+console.log("Notible Sync self-check passed.");

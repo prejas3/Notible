@@ -1,0 +1,1 @@
+{"id":"notible.typewriter","name":"Typewriter","version":"0.1.0","apiVersion":"0.1","entry":"index.js","permissions":["data.read","data.write","relations.write","workspace.ui","editor.extension","notifications"],"sync":"data"}

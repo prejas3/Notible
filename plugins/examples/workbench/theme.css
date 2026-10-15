@@ -1,0 +1,95 @@
+/*
+ * Workbench styles — and, more to the point, proof that `styles[]` works.
+ *
+ * Everything a plugin ships here is injected by Core into one <style> tagged
+ * with the plugin id, and taken down again on disable. If this file has any
+ * effect at all, D5 works; if the panel looks unstyled, it does not.
+ *
+ * Colours come from the host's tokens rather than literals, so the panel
+ * follows Paper and Night without the plugin knowing which is active. Every
+ * selector is namespaced under `wb-`: a plugin must not restyle Core.
+ */
+
+.wb-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 8px 12px;
+  padding: 12px;
+  border: 1px solid var(--notible-border);
+  border-left: 3px solid var(--notible-accent, var(--notible-border));
+  border-radius: 10px;
+  background: var(--notible-surface);
+  color: var(--notible-text);
+}
+
+.wb-title {
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  opacity: 0.65;
+}
+
+.wb-body {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 13px;
+}
+
+.wb-line {
+  font-variant-numeric: tabular-nums;
+}
+
+.wb-hint {
+  font-size: 12px;
+  opacity: 0.7;
+  line-height: 1.4;
+}
+
+.wb-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.wb-tag {
+  padding: 1px 7px;
+  border: 1px solid var(--notible-border);
+  border-radius: 999px;
+  font-size: 11px;
+}
+
+.wb-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.wb-button {
+  flex: 1;
+  padding: 5px 8px;
+  border: 1px solid var(--notible-border);
+  border-radius: 7px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.wb-button:hover {
+  background: var(--notible-hover);
+}
+
+/* Slot markers: small enough to sit in a toolbar or footer row. */
+.wb-marker {
+  padding: 1px 6px;
+  border: 1px dashed var(--notible-border);
+  border-radius: 5px;
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  opacity: 0.7;
+  white-space: nowrap;
+}

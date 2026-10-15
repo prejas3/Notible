@@ -1,0 +1,50 @@
+// I18N (Hive #54): the builtin plugins' view titles and manifest names. Core
+// translates them where it draws them (CoreOnlyApp `shownTitle`). The plugin
+// files keep the English literals; this list only marks them for locale:extract.
+// Local marker, not core-i18n: same reason as coreCommands.ts.
+const tr = (key: string) => key;
+
+export const BUILTIN_TITLE_KEYS = [
+  tr("AI work desk"),
+  tr("Automations"),
+  tr("Calendar"),
+  tr("Calendar integrations"),
+  tr("Canvas"),
+  tr("Editor extensions"),
+  tr("Embedded queries"),
+  tr("Finance"),
+  tr("Import and export"),
+  tr("Planning"),
+  tr("Project dashboard"),
+  tr("Project finance"),
+  tr("Properties"),
+  tr("Properties panel"),
+  tr("Search"),
+  tr("Search and backlinks"),
+  tr("Tasks, Issues and Projects"),
+  tr("Themes"),
+  tr("Typewriter"),
+  tr("Views"),
+  tr("Views and Dashboards"),
+  tr("Whiteboard"),
+  tr("Work models"),
+  tr("Workspace dashboard"),
+  // I18N (Hive #58): builtin settings titles and command text in the plugin detail pane.
+  tr("Work models settings"),
+  tr("Properties settings"),
+  tr("Search settings"),
+  tr("Finance settings"),
+  tr("Themes settings"),
+  tr("Diagram appearance"),
+  tr("AI settings"),
+  tr("Create project"),
+  tr("Create task"),
+  tr("Create issue"),
+  tr("Create whiteboard"),
+  tr("New manuscript"),
+  tr("A project with its own tasks board."),
+  tr("A task with status, priority and due date."),
+  tr("An issue to track a bug or problem."),
+  tr("A freeform board for cards, shapes and linked notes."),
+  tr("Start a new long-form manuscript"),
+];

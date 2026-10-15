@@ -1,0 +1,11 @@
+{
+  "id": "example.workbench",
+  "name": "Workbench",
+  "version": "0.1.0",
+  "apiVersion": "0.1",
+  "description": "Exercises everything the API gained in 0.42: the content index, plugin stylesheets, all six slots, every overlay and the declarative settings panel.",
+  "author": "Notible example",
+  "entry": "main.js",
+  "styles": ["theme.css"],
+  "permissions": ["data.read", "workspace.ui", "editor.extension"]
+}

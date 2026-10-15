@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Notible — scrollbar variants</title>
+<style>
+  /* Notible paper palette, copied from core-only.css so this board reads in
+     the same visual language as the app it is proposing a change to. */
+  :root {
+    --bg: #f4efe6;
+    --surface: #fbf8f2;
+    --ink: #242228;
+    --muted: #726b64;
+    --line: #ded9d3;
+    --accent: #7661a8;
+    --burgundy: #7a2f3d;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 34px clamp(16px, 4vw, 48px) 64px;
+    background: var(--bg);
+    color: var(--ink);
+    font: 15px/1.6 ui-sans-serif, -apple-system, "Segoe UI", system-ui, sans-serif;
+  }
+  header { max-width: 760px; margin-bottom: 30px; }
+  h1 { margin: 0 0 6px; font-size: 26px; letter-spacing: -0.01em; }
+  header p { margin: 0; color: var(--muted); font-size: 14px; }
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 20px;
+    align-items: start;
+  }
+  .card {
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    background: var(--surface);
+    padding: 18px 18px 20px;
+  }
+  .card h2 { margin: 0 0 2px; font-size: 15px; font-weight: 650; }
+  .card > p { margin: 0 0 14px; color: var(--muted); font-size: 12.5px; min-height: 34px; }
+  .tag {
+    display: inline-block;
+    margin-bottom: 10px;
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: rgb(118 97 168 / 12%);
+    color: var(--accent);
+    font-size: 10.5px;
+    font-weight: 700;
+    letter-spacing: .05em;
+    text-transform: uppercase;
+  }
+  .demo {
+    height: 190px;
+    overflow-y: scroll;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 12px 14px;
+    background: var(--bg);
+    font-size: 13.5px;
+    line-height: 1.75;
+  }
+  .demo p { margin: 0 0 10px; }
+  .demo p:last-child { margin-bottom: 0; }
+  code { font: 12px/1.5 ui-monospace, Consolas, monospace; color: var(--burgundy); }
+  .css-note { margin: 12px 0 0; color: var(--muted); font-size: 11.5px; }
+
+  /* ---------- A. Current (browser default) ---------- */
+  /* nothing: this is what every scrollable surface in Notible looks like now */
+
+  /* ---------- B. Slim ---------- */
+  .v-slim { scrollbar-width: thin; scrollbar-color: #c9c1b7 transparent; }
+  .v-slim::-webkit-scrollbar { width: 8px; }
+  .v-slim::-webkit-scrollbar-track { background: transparent; }
+  .v-slim::-webkit-scrollbar-thumb {
+    border: 2px solid transparent;
+    border-radius: 99px;
+    background: #c9c1b7;
+    background-clip: content-box;
+  }
+  .v-slim::-webkit-scrollbar-thumb:hover { background: #a9a096; background-clip: content-box; }
+
+  /* ---------- C. Ghost (appears on hover) ---------- */
+  .v-ghost { scrollbar-width: thin; scrollbar-color: transparent transparent; transition: scrollbar-color .18s ease; }
+  .v-ghost:hover, .v-ghost:focus-within { scrollbar-color: #bdb4a9 transparent; }
+  .v-ghost::-webkit-scrollbar { width: 10px; }
+  .v-ghost::-webkit-scrollbar-track { background: transparent; }
+  .v-ghost::-webkit-scrollbar-thumb {
+    border: 3px solid transparent;
+    border-radius: 99px;
+    background: transparent;
+    background-clip: content-box;
+    transition: background .18s ease;
+  }
+  .v-ghost:hover::-webkit-scrollbar-thumb, .v-ghost:focus-within::-webkit-scrollbar-thumb {
+    background: #bdb4a9;
+    background-clip: content-box;
+  }
+  .v-ghost::-webkit-scrollbar-thumb:hover { background: #968d82; background-clip: content-box; }
+
+  /* ---------- D. Inked (accent, matches the app's active colour) ---------- */
+  .v-inked { scrollbar-width: thin; scrollbar-color: rgb(122 47 61 / 45%) transparent; }
+  .v-inked::-webkit-scrollbar { width: 10px; }
+  .v-inked::-webkit-scrollbar-track { margin: 4px 0; border-radius: 99px; background: rgb(36 34 40 / 4%); }
+  .v-inked::-webkit-scrollbar-thumb {
+    border: 3px solid transparent;
+    border-radius: 99px;
+    background: rgb(122 47 61 / 45%);
+    background-clip: content-box;
+  }
+  .v-inked::-webkit-scrollbar-thumb:hover { background: rgb(122 47 61 / 75%); background-clip: content-box; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Scrollbar variants</h1>
+  <p>Same scrollable box four times. Scroll each one, hover each one, then tell me a letter — I apply that one everywhere a surface scrolls (Timeline, sidebar, editor, Kanban, settings, dropdowns).</p>
+</header>
+
+<div class="grid">
+
+  <section class="card">
+    <span class="tag">A — current</span>
+    <h2>Browser default</h2>
+    <p>What ships today. Wide, grey, opaque; it is the most visible thing on the Timeline.</p>
+    <div class="demo">
+      <p>Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore.</p>
+      <p>Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo.</p>
+      <p>Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla.</p>
+      <p>Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim.</p>
+      <p>Sed ut perspiciatis unde omnis iste natus error sit voluptatem accusantium doloremque laudantium.</p>
+    </div>
+    <p class="css-note">No CSS at all.</p>
+  </section>
+
+  <section class="card">
+    <span class="tag">B — slim</span>
+    <h2>Slim, always visible</h2>
+    <p>Half the width, rounded, no track. Always there, so you can always see where you are in a long note.</p>
+    <div class="demo v-slim">
+      <p>Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore.</p>
+      <p>Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo.</p>
+      <p>Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla.</p>
+      <p>Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim.</p>
+      <p>Sed ut perspiciatis unde omnis iste natus error sit voluptatem accusantium doloremque laudantium.</p>
+    </div>
+    <p class="css-note"><code>8px</code> · warm grey thumb · transparent track</p>
+  </section>
+
+  <section class="card">
+    <span class="tag">C — ghost</span>
+    <h2>Ghost, fades in on hover</h2>
+    <p>Invisible until the pointer enters the area — the most minimal option, closest to macOS. Hover the box to see it.</p>
+    <div class="demo v-ghost">
+      <p>Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore.</p>
+      <p>Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo.</p>
+      <p>Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla.</p>
+      <p>Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim.</p>
+      <p>Sed ut perspiciatis unde omnis iste natus error sit voluptatem accusantium doloremque laudantium.</p>
+    </div>
+    <p class="css-note">Trade-off: nothing indicates scrollability until you hover.</p>
+  </section>
+
+  <section class="card">
+    <span class="tag">D — inked</span>
+    <h2>Inked, burgundy accent</h2>
+    <p>Slim with a faint recessed track, thumb in the app's burgundy. Reads as part of the design rather than as chrome.</p>
+    <div class="demo v-inked">
+      <p>Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore.</p>
+      <p>Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo.</p>
+      <p>Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla.</p>
+      <p>Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim.</p>
+      <p>Sed ut perspiciatis unde omnis iste natus error sit voluptatem accusantium doloremque laudantium.</p>
+    </div>
+    <p class="css-note"><code>10px</code> · burgundy 45% → 75% on hover · faint track</p>
+  </section>
+
+</div>
+
+</body>
+</html>

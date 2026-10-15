@@ -1,0 +1,70 @@
+/* Buttons, cards, fields, messages, eyebrow and empty states come from
+   surface.css. Only layout that is specific to these panels lives here. */
+
+.domain-plugin-surface { display: grid; gap: 16px; }
+.domain-plugin-header { padding: 20px; }
+.domain-plugin-header h2, .domain-card h3 { margin: 4px 0 7px; color: var(--notible-text); }
+.domain-plugin-header p:not(.domain-plugin-eyebrow) { color: var(--notible-muted); }
+.domain-plugin-actions, .domain-search-row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }.domain-search-row input { flex: 1; min-width: 220px; }
+.domain-metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }.domain-metrics div { border: 1px solid var(--notible-border); border-radius: 12px; padding: 15px; background: var(--notible-surface); }.domain-metrics strong, .domain-metrics span { display: block; }.domain-metrics strong { color: var(--notible-text); font-size: 22px; }.domain-metrics span { margin-top: 4px; color: var(--notible-muted); font-size: 12px; }
+.domain-two-column { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }.domain-card { display: grid; gap: 12px; }.domain-card textarea, .domain-plugin-surface > label textarea { box-sizing: border-box; width: 100%; min-height: 170px; resize: vertical; border: 1px solid var(--notible-border); border-radius: 8px; padding: 8px 9px; background: var(--notible-surface); color: var(--notible-text); font: inherit; }
+.domain-form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }.domain-record-list { display: grid; gap: 7px; }.domain-record-list button, .domain-record-list > div { display: flex; justify-content: space-between; gap: 12px; text-align: left; border: 1px solid var(--notible-border); border-radius: 8px; padding: 10px; background: var(--notible-surface); color: var(--notible-text); cursor: pointer; font: inherit; }.domain-record-list strong, .domain-record-list small { display: block; }.domain-record-list small { margin-top: 3px; color: var(--notible-muted); font-size: 11px; }.domain-score { float: right; margin-left: 12px; color: var(--notible-accent); }.domain-result { align-self: end; padding: 10px 0; color: var(--notible-muted); font-size: 13px; }
+.domain-theme-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; }.domain-theme-grid button { display: grid; grid-template-columns: auto 1fr; gap: 4px 10px; align-items: center; border: 1px solid var(--notible-border); border-radius: 12px; padding: 14px; background: var(--notible-surface); color: var(--notible-text); text-align: left; cursor: pointer; font: inherit; }.domain-theme-grid button.selected { border-color: var(--notible-accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--notible-accent) 18%, transparent); }.domain-theme-grid span { grid-row: span 2; display: grid; place-items: center; width: 38px; height: 38px; border-radius: 9px; font-weight: 800; }.domain-theme-grid small { color: var(--notible-muted); }
+.domain-theme-token-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(90px, 1fr)); gap: 10px; }
+.domain-theme-token { display: grid; justify-items: center; gap: 5px; color: var(--notible-muted); font-size: 11px; text-transform: capitalize; }
+.domain-theme-token input[type="color"] { width: 100%; height: 32px; padding: 2px; border: 1px solid var(--notible-border); border-radius: 6px; background: var(--notible-surface); cursor: pointer; }
+@media (max-width: 850px) { .domain-metrics, .domain-two-column { grid-template-columns: 1fr 1fr; } }
+@media (max-width: 560px) { .domain-metrics, .domain-two-column, .domain-form-row { grid-template-columns: 1fr; } }
+.nq-doc-example { margin: 0; padding: 12px; overflow-x: auto; border: 1px solid var(--notible-border); border-radius: 8px; background: var(--notible-background); color: var(--notible-text); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; line-height: 1.5; }
+.nq-doc-keys { display: grid; gap: 6px; margin: 0; padding-left: 18px; color: var(--notible-muted); font-size: 13px; }
+.nq-doc-keys code { color: var(--notible-text); font-size: 12px; }
+
+/* Colour pickers grouped by the job they do. The heading carries the meaning,
+   so a group of two and a group of five both look deliberate instead of like
+   a grid that ran out of items. */
+.domain-theme-group { display: grid; gap: 8px; padding-top: 12px; border-top: 1px solid var(--notible-border); }
+.domain-theme-group-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.domain-theme-group-head strong { color: var(--notible-text); font-size: 13px; }
+.domain-theme-group-head span { color: var(--notible-muted); font-size: 12px; }
+.ns-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.domain-theme-advanced { display: grid; gap: 16px; margin-top: 4px; border-top: 1px solid var(--notible-border); padding-top: 14px; }
+.domain-theme-advanced > summary { width: fit-content; color: var(--notible-text); font-size: 13px; font-weight: 600; cursor: pointer; list-style: none; }
+.domain-theme-advanced > summary::-webkit-details-marker { display: none; }
+.domain-theme-advanced > summary::before { content: "\25B8  "; color: var(--notible-muted); }
+.domain-theme-advanced[open] > summary::before { content: "\25BE  "; }
+.ns-details > summary { width: fit-content; color: var(--notible-accent); font-size: 12px; cursor: pointer; }
+.ns-details > summary:hover { color: var(--notible-accent-hover); }
+.ns-details pre { overflow-x: auto; margin: 8px 0; border: 1px solid var(--notible-border); border-radius: 8px; padding: 10px; background: var(--notible-hover); color: var(--notible-text); font-size: 12px; }
+
+.domain-plugin-header { border: 0; border-bottom: 1px solid var(--notible-border); border-radius: 0; padding: 4px 0 20px; }
+.domain-plugin-header h2 { font-size: 26px; letter-spacing: -.025em; }
+.domain-card h3 { font-size: 16px; letter-spacing: -.01em; }
+
+/* Community themes */
+.domain-theme-list { list-style: none; margin: 0; padding: 0; display: grid; }
+.domain-theme-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 12px 4px; border-bottom: 1px solid var(--notible-border); }
+.domain-theme-row > div:first-child { display: grid; gap: 2px; min-width: 0; }
+.domain-theme-row small { color: var(--notible-muted); font-size: 12px; }
+.domain-theme-actions { display: flex; align-items: center; gap: 8px; }
+.domain-theme-badge { color: var(--notible-accent); font-size: 12px; font-weight: 700; }
+.domain-themes { display: grid; gap: 16px; }
+
+/* Mermaid settings (Hive #41): custom colour control + live preview. */
+.mermaid-color { position: relative; display: inline-flex; }
+.core-setting-row .mermaid-color { width: 120px; }
+.mermaid-color .nb-value { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.mermaid-color-chip { flex: none; width: 14px; height: 14px; border-radius: 4px; border: 1px solid var(--notible-border); box-sizing: border-box; }
+.mermaid-color-chip.is-auto { background: linear-gradient(135deg, var(--notible-surface) 50%, var(--notible-text) 50%); }
+.mermaid-color-popover { width: 212px; max-height: none; padding: 8px; display: grid; gap: 8px; }
+.mermaid-color-auto { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border: 0; border-radius: 6px; background: transparent; color: var(--notible-text); font: inherit; text-align: left; cursor: pointer; }
+.mermaid-color-auto:hover, .mermaid-color-auto:focus-visible { background: var(--notible-hover); outline: none; }
+.mermaid-color-auto.is-selected { box-shadow: inset 0 0 0 1px var(--notible-accent); }
+.mermaid-color-swatches { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; }
+.mermaid-color-swatch { aspect-ratio: 1; border: 1px solid var(--notible-border); border-radius: 6px; padding: 0; cursor: pointer; }
+.mermaid-color-swatch:hover, .mermaid-color-swatch:focus-visible { outline: 2px solid var(--notible-accent); outline-offset: 1px; }
+.mermaid-color-swatch.is-selected { outline: 2px solid var(--notible-text); outline-offset: 1px; }
+.mermaid-color-hex { display: flex; align-items: center; gap: 8px; color: var(--notible-muted); }
+.mermaid-color-hex input { flex: 1; min-width: 0; padding: 5px 8px; border: 1px solid var(--notible-border); border-radius: 6px; background: var(--notible-surface); color: var(--notible-text); font: inherit; font-variant-numeric: tabular-nums; }
+.mermaid-color-hex input:focus { outline: none; border-color: var(--notible-accent); }
+.mermaid-color-hex input[aria-invalid="true"] { border-color: var(--notible-danger); }
+.core-mermaid-diagram.mermaid-settings-preview { margin-top: 8px; padding: 12px; border: 1px solid var(--notible-border-subtle); border-radius: 8px; }

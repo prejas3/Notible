@@ -1,0 +1,11 @@
+{
+  "id": "prejas3.synthwave",
+  "name": "Synthwave",
+  "version": "1.0.0",
+  "apiVersion": "1.0",
+  "minCoreVersion": "0.87.2",
+  "author": "prejas3",
+  "description": "Neon sunset over a wireframe valley, with a frosted-glass sidebar.",
+  "styles": ["theme.css"],
+  "theme": { "name": "Synthwave", "mode": "dark", "description": "Neon sunset, wireframe grid and frosted glass." }
+}
